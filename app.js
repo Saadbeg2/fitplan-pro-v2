@@ -20,6 +20,192 @@ import {
    Helpers
 ----------------------------- */
 
+/* -----------------------------
+   Stats (Profile + Training)
+----------------------------- */
+
+const DOB_ISO = "2002-08-12"; // Aug 12, 2002
+
+function calcAgeFromDOB(dobISO, todayISO) {
+  const dob = new Date(dobISO + "T00:00:00");
+  const today = new Date(todayISO + "T00:00:00");
+  let age = today.getFullYear() - dob.getFullYear();
+
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+
+  return age;
+}
+
+function avg(nums) {
+  const vals = nums.filter((v) => Number.isFinite(v));
+  if (vals.length === 0) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function fmtInt(n) {
+  return Number.isFinite(n) ? String(Math.round(n)) : "—";
+}
+
+function fmt1Safe(n) {
+  return Number.isFinite(n) ? String(Math.round(n * 10) / 10) : "—";
+}
+
+function findLatestMetric(metrics) {
+  // metrics is [{date, bodyweightLb?, calories?}, ...]
+  if (!metrics || metrics.length === 0) return null;
+  const sorted = [...metrics].sort((a, b) => (a.date < b.date ? -1 : 1));
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (sorted[i]?.bodyweightLb || sorted[i]?.calories) return sorted[i];
+  }
+  return sorted[sorted.length - 1] || null;
+}
+
+function computeWeightChange(metrics) {
+  // 14d change: last non-null BW - first non-null BW
+  const sorted = [...metrics].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const first = sorted.find((m) => Number.isFinite(m?.bodyweightLb));
+  const last = [...sorted].reverse().find((m) => Number.isFinite(m?.bodyweightLb));
+  if (!first || !last) return null;
+  return (last.bodyweightLb - first.bodyweightLb);
+}
+
+function getTopSetFromLS(key) {
+  // stored as JSON: { w: number, r: number }
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    const w = Number(obj?.w);
+    const r = Number(obj?.r);
+    if (!Number.isFinite(w) || w <= 0) return null;
+    if (!Number.isFinite(r) || r <= 0) return null;
+    return { w, r };
+  } catch {
+    return null;
+  }
+}
+
+function setTopSetViaPrompt(key, label) {
+  const cur = getTopSetFromLS(key);
+  const curText = cur ? `${cur.w} x ${cur.r}` : "";
+  const val = prompt(`${label} top set (format: weight x reps)\nExample: 225 x 5`, curText);
+  if (!val) return;
+
+  const cleaned = val.toLowerCase().replace(/\s+/g, "");
+  const parts = cleaned.split("x");
+  if (parts.length !== 2) {
+    alert("Use format like: 225 x 5");
+    return;
+  }
+
+  const w = Number(parts[0]);
+  const r = Number(parts[1]);
+  if (!Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) {
+    alert("Enter valid numbers, like: 225 x 5");
+    return;
+  }
+
+  localStorage.setItem(key, JSON.stringify({ w, r }));
+}
+
+async function renderStats(db, todayISO) {
+  // Age
+  const age = calcAgeFromDOB(DOB_ISO, todayISO);
+  const ageNode = elOpt("statAge");
+  if (ageNode) ageNode.textContent = `${age}`;
+
+  // Metrics windows
+  const d7 = new Date(todayISO + "T00:00:00");
+  d7.setDate(d7.getDate() - 6);
+  const start7 = isoDateLocal(d7);
+
+  const d14 = new Date(todayISO + "T00:00:00");
+  d14.setDate(d14.getDate() - 13);
+  const start14 = isoDateLocal(d14);
+
+  const d365 = new Date(todayISO + "T00:00:00");
+  d365.setDate(d365.getDate() - 365);
+  const start365 = isoDateLocal(d365);
+
+  const metrics7 = await listMetricsInRange(db, start7, todayISO);
+  const metrics14 = await listMetricsInRange(db, start14, todayISO);
+  const metrics365 = await listMetricsInRange(db, start365, todayISO);
+
+  const latest = findLatestMetric(metrics365);
+
+  const bw = latest?.bodyweightLb;
+  const bmi = Number.isFinite(bw) ? calcBMI(bw, HEIGHT_IN) : null;
+
+  const bwNode = elOpt("statBW");
+  if (bwNode) bwNode.textContent = Number.isFinite(bw) ? `${fmt1Safe(bw)} lb` : "—";
+
+  const bmiNode = elOpt("statBMI");
+  if (bmiNode) bmiNode.textContent = bmi ? `${fmt1Safe(bmi)}` : "—";
+
+  // Streak + workout counts
+  const { start: s30, end: e30 } = last30RangeDates();
+  const sessions30 = await listSessionsInRange(db, s30, e30);
+  const trackedDatesSet = new Set(sessions30.map((s) => s.date));
+  const streak = computeStreak(trackedDatesSet);
+
+  const streakNode = elOpt("statStreak");
+  if (streakNode) streakNode.textContent = `Streak: ${streak}`;
+
+  // workouts 7d/30d
+  const d7s = new Date(todayISO + "T00:00:00");
+  d7s.setDate(d7s.getDate() - 6);
+  const start7s = isoDateLocal(d7s);
+  const sessions7 = await listSessionsInRange(db, start7s, todayISO);
+
+  const w7 = sessions7.filter((s) => s.type === "WORKOUT").length;
+  const w30 = sessions30.filter((s) => s.type === "WORKOUT").length;
+
+  const w7Node = elOpt("stat7dWorkouts");
+  if (w7Node) w7Node.textContent = `Workouts (7d): ${w7}`;
+
+  const w30Node = elOpt("stat30dWorkouts");
+  if (w30Node) w30Node.textContent = `Workouts (30d): ${w30}`;
+
+  // Calories averages
+  const cal7avg = avg(metrics7.map((m) => Number(m?.calories)));
+  const cal14avg = avg(metrics14.map((m) => Number(m?.calories)));
+
+  const cal7Node = elOpt("statCal7");
+  if (cal7Node) cal7Node.textContent = `Avg calories (7d): ${cal7avg ? fmtInt(cal7avg) : "—"}`;
+
+  const cal14Node = elOpt("statCal14");
+  if (cal14Node) cal14Node.textContent = `Avg calories (14d): ${cal14avg ? fmtInt(cal14avg) : "—"}`;
+
+  // Weight change 14d
+  const delta = computeWeightChange(metrics14);
+  const deltaNode = elOpt("statWChange14");
+  if (deltaNode) {
+    if (delta === null) deltaNode.textContent = "Weight change (14d): —";
+    else {
+      const sign = delta > 0 ? "+" : "";
+      deltaNode.textContent = `Weight change (14d): ${sign}${fmt1Safe(delta)} lb`;
+    }
+  }
+
+  // Strength (manual top sets stored locally)
+  const bench = getTopSetFromLS("fitplan_top_bench");
+  const squat = getTopSetFromLS("fitplan_top_squat");
+  const dead = getTopSetFromLS("fitplan_top_dead");
+
+  const benchNode = elOpt("statBench");
+  const squatNode = elOpt("statSquat");
+  const deadNode = elOpt("statDeadlift");
+
+  if (benchNode) benchNode.textContent = `Bench: ${bench ? `${bench.w} x ${bench.r}` : "Tap to set"}`;
+  if (squatNode) squatNode.textContent = `Squat: ${squat ? `${squat.w} x ${squat.r}` : "Tap to set"}`;
+  if (deadNode) deadNode.textContent = `Deadlift: ${dead ? `${dead.w} x ${dead.r}` : "Tap to set"}`;
+
+  if (benchNode) benchNode.onclick = () => { setTopSetViaPrompt("fitplan_top_bench", "Bench"); renderStats(db, todayISO).catch(()=>{}); };
+  if (squatNode) squatNode.onclick = () => { setTopSetViaPrompt("fitplan_top_squat", "Squat"); renderStats(db, todayISO).catch(()=>{}); };
+  if (deadNode) deadNode.onclick = () => { setTopSetViaPrompt("fitplan_top_dead", "Deadlift"); renderStats(db, todayISO).catch(()=>{}); };
+}
+
 function uid(prefix = "id") {
   return `${prefix}_${crypto.randomUUID()}`;
 }
@@ -46,7 +232,7 @@ function hide(id) {
 }
 
 function setActiveNav(activeId) {
-  const ids = ["navHome", "navLog", "navHistory"];
+  const ids = ["navHome", "navStats", "navHistory"];
   for (const id of ids) {
     const n = elOpt(id);
     if (!n) continue;
@@ -55,12 +241,13 @@ function setActiveNav(activeId) {
 }
 
 function goScreen(name) {
-  const screens = ["screenHome", "screenLog", "screenHistory"];
+  const screens = ["screenHome", "screenLog", "screenStats", "screenHistory"];
   for (const s of screens) hide(s);
   show(name);
 
   if (name === "screenHome") setActiveNav("navHome");
-  if (name === "screenLog") setActiveNav("navLog");
+  if (name === "screenLog") setActiveNav("navHome");     // optional: keep Home highlighted while logging
+  if (name === "screenStats") setActiveNav("navStats");
   if (name === "screenHistory") setActiveNav("navHistory");
 }
 
@@ -519,18 +706,18 @@ function renderCharts({ labels, weights, calories }) {
   });
 
   // range labels
-// range labels (ignore nulls)
-const wVals = weights.filter((v) => Number.isFinite(v));
-const cVals = calories.filter((v) => Number.isFinite(v));
+  // range labels (ignore nulls)
+  const wVals = weights.filter((v) => Number.isFinite(v));
+  const cVals = calories.filter((v) => Number.isFinite(v));
 
-const wMin = wVals.length ? Math.min(...wVals) : 0;
-const wMax = wVals.length ? Math.max(...wVals) : 0;
+  const wMin = wVals.length ? Math.min(...wVals) : 0;
+  const wMax = wVals.length ? Math.max(...wVals) : 0;
 
-const cMin = cVals.length ? Math.min(...cVals) : 0;
-const cMax = cVals.length ? Math.max(...cVals) : 0;
+  const cMin = cVals.length ? Math.min(...cVals) : 0;
+  const cMax = cVals.length ? Math.max(...cVals) : 0;
 
-el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
-el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
+  el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
+  el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
 }
 
 function enableQuickTrackUI(enabled) {
@@ -615,51 +802,51 @@ async function main() {
         calories: val,
         updatedAt: Date.now()
       });
-el("navHistory").click(); // re-loads charts from DB
+      el("navHistory").click(); // re-loads charts from DB
       alert("Calories saved.");
     };
   }
 
   // nav wiring
   el("navHome").onclick = () => goScreen("screenHome");
-  el("navLog").onclick = () => goScreen("screenLog");
-  
+  el("navStats").onclick = () => goScreen("screenStats");
+
   el("navHistory").onclick = async () => {
-  goScreen("screenHistory");
-  renderRecent(db).catch(() => {});
+    goScreen("screenHistory");
+    renderRecent(db).catch(() => { });
 
-  const startD = new Date(todayISO + "T00:00:00");
-  startD.setDate(startD.getDate() - 13);
-  const startISO = isoDateLocal(startD);
+    const startD = new Date(todayISO + "T00:00:00");
+    startD.setDate(startD.getDate() - 13);
+    const startISO = isoDateLocal(startD);
 
-  const metrics = await listMetricsInRange(db, startISO, todayISO);
+    const metrics = await listMetricsInRange(db, startISO, todayISO);
 
-  if (metrics.length === 0) {
-    renderCharts(buildPlaceholderSeries(todayISO, 14));
-  } else {
-    const byDate = new Map(metrics.map((m) => [m.date, m]));
+    if (metrics.length === 0) {
+      renderCharts(buildPlaceholderSeries(todayISO, 14));
+    } else {
+      const byDate = new Map(metrics.map((m) => [m.date, m]));
 
-    const labels = [];
-    const weights = [];
-    const calories = [];
+      const labels = [];
+      const weights = [];
+      const calories = [];
 
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(todayISO + "T00:00:00");
-      d.setDate(d.getDate() - i);
-      const iso = isoDateLocal(d);
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(todayISO + "T00:00:00");
+        d.setDate(d.getDate() - i);
+        const iso = isoDateLocal(d);
 
-      labels.push(iso.slice(5));
-      const m = byDate.get(iso);
+        labels.push(iso.slice(5));
+        const m = byDate.get(iso);
 
-      weights.push(m?.bodyweightLb ?? null);
-      calories.push(m?.calories ?? null);
+        weights.push(m?.bodyweightLb ?? null);
+        calories.push(m?.calories ?? null);
+      }
+
+      renderCharts({ labels, weights, calories });
     }
 
-    renderCharts({ labels, weights, calories });
-  }
-
-  enableQuickTrackUI(true);
-  wireBMI();
+    enableQuickTrackUI(true);
+    wireBMI();
   };
 
   el("btnLogBackHome").onclick = () => goScreen("screenHome");
