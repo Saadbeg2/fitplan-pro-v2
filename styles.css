@@ -360,3 +360,43 @@
   color:var(--muted);
   margin-top:2px;
 }
+
+/* =========================
+   STATS SCREEN SPACING
+   ========================= */
+
+#screenStats .card {
+  padding: 22px;
+}
+
+/* section headers */
+#screenStats h3 {
+  margin-top: 26px;
+  margin-bottom: 8px;
+}
+
+/* dividers */
+#screenStats .divider {
+  margin: 24px 0;
+}
+
+/* top stats grid */
+#screenStats .grid2 {
+  gap: 18px;
+}
+
+/* individual stat rows */
+#screenStats .small {
+  margin-top: 6px;
+}
+
+/* strength rows spacing */
+#screenStats .strengthRow {
+  margin-top: 6px;
+}
+
+/* nutrition + training spacing */
+#screenStats .nutritionRow,
+#screenStats .trainingRow {
+  margin-top: 6px;
+}
