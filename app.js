@@ -10,7 +10,10 @@ import {
   getWeekState,
   setWeekState,
   deleteSessionsAndLogsInDateRange,
-  getLatestWeightsForExercise // 👈 add this
+  getLatestWeightsForExercise,
+  upsertMetric,
+  getMetricByDate,
+  listMetricsInRange,
 } from "./db.js";
 
 /* -----------------------------
@@ -516,14 +519,18 @@ function renderCharts({ labels, weights, calories }) {
   });
 
   // range labels
-  const wMin = Math.min(...weights);
-  const wMax = Math.max(...weights);
-  el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
+// range labels (ignore nulls)
+const wVals = weights.filter((v) => Number.isFinite(v));
+const cVals = calories.filter((v) => Number.isFinite(v));
 
-  const cMin = Math.min(...calories);
-  const cMax = Math.max(...calories);
-  el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
-}
+const wMin = wVals.length ? Math.min(...wVals) : 0;
+const wMax = wVals.length ? Math.max(...wVals) : 0;
+
+const cMin = cVals.length ? Math.min(...cVals) : 0;
+const cMax = cVals.length ? Math.max(...cVals) : 0;
+
+el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
+el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
 
 function enableQuickTrackUI(enabled) {
   const bw = elOpt("bwInput");
@@ -561,22 +568,96 @@ async function main() {
   await registerSW();
   const db = await openDB();
 
-    const todayISO = isoDateLocal(new Date());
+  const todayISO = isoDateLocal(new Date());
+
+  const btnSaveBW = elOpt("btnSaveBW");
+  if (btnSaveBW) {
+    btnSaveBW.onclick = async () => {
+      const bw = elOpt("bwInput");
+      if (!bw) return;
+
+      const val = Number(bw.value);
+      if (!Number.isFinite(val) || val <= 0) {
+        alert("Enter a valid bodyweight.");
+        return;
+      }
+
+      const prev = (await getMetricByDate(db, todayISO)) || { date: todayISO };
+      await upsertMetric(db, {
+        ...prev,
+        date: todayISO,
+        bodyweightLb: val,
+        updatedAt: Date.now()
+      });
+
+      alert("Bodyweight saved.");
+    };
+  }
+
+  const btnSaveCal = elOpt("btnSaveCal");
+  if (btnSaveCal) {
+    btnSaveCal.onclick = async () => {
+      const cal = elOpt("calInput");
+      if (!cal) return;
+
+      const val = Number(cal.value);
+      if (!Number.isFinite(val) || val <= 0) {
+        alert("Enter a valid calorie number.");
+        return;
+      }
+
+      const prev = (await getMetricByDate(db, todayISO)) || { date: todayISO };
+      await upsertMetric(db, {
+        ...prev,
+        date: todayISO,
+        calories: val,
+        updatedAt: Date.now()
+      });
+
+      alert("Calories saved.");
+    };
+  }
 
   // nav wiring
   el("navHome").onclick = () => goScreen("screenHome");
   el("navLog").onclick = () => goScreen("screenLog");
-  el("navHistory").onclick = () => {
-    goScreen("screenHistory");
-    renderRecent(db).catch(() => { });
+  el("navHistory").onclick = async () => {
+  goScreen("screenHistory");
+  renderRecent(db).catch(() => {});
 
-    // default: render placeholder trends
-    const series = buildPlaceholderSeries(todayISO, 14);
-    renderCharts(series);
+  const startD = new Date(todayISO + "T00:00:00");
+  startD.setDate(startD.getDate() - 13);
+  const startISO = isoDateLocal(startD);
 
-    enableQuickTrackUI(true);
-    wireBMI();
-  };
+  const metrics = await listMetricsInRange(db, startISO, todayISO);
+
+  if (metrics.length === 0) {
+    renderCharts(buildPlaceholderSeries(todayISO, 14));
+  } else {
+    const byDate = new Map(metrics.map(m => [m.date, m]));
+
+    const labels = [];
+    const weights = [];
+    const calories = [];
+
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(todayISO + "T00:00:00");
+      d.setDate(d.getDate() - i);
+      const iso = isoDateLocal(d);
+
+      labels.push(iso.slice(5));
+      const m = byDate.get(iso);
+
+      weights.push(m?.bodyweightLb ?? null);
+      calories.push(m?.calories ?? null);
+    }
+
+    renderCharts({ labels, weights, calories });
+  }
+
+  enableQuickTrackUI(true);
+  wireBMI();
+};
 
   el("btnLogBackHome").onclick = () => goScreen("screenHome");
 
@@ -586,7 +667,7 @@ async function main() {
     goScreen("screenHome");
   };
 
-  el("btnHistoryRefresh").onclick = () => renderRecent(db);
+  el("btnHistoryRefresh").onclick = () => el("navHistory").click();
 
   // quick track toggle (History)
   const btnToggle = elOpt("btnToggleQuickTrack");

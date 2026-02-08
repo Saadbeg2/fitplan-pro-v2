@@ -1,5 +1,5 @@
 const DB_NAME = "fitplan_pro_v2";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 function promisifyRequest(req) {
   return new Promise((resolve, reject) => {
@@ -34,6 +34,12 @@ export async function openDB() {
       // weekState: single record holding current active-week state
       if (!db.objectStoreNames.contains("weekState")) {
         db.createObjectStore("weekState", { keyPath: "id" });
+      }
+
+      // metrics: one per calendar day (bodyweight/calories)
+      if (!db.objectStoreNames.contains("metrics")) {
+        const store = db.createObjectStore("metrics", { keyPath: "date" }); // date is unique key
+        store.createIndex("byDate", "date", { unique: true });
       }
     };
 
@@ -248,6 +254,38 @@ export async function getLatestWeightsForExercise(db, dayNumber, exerciseName, b
       cursor.continue();
     };
 
+    req.onerror = () => reject(req.error);
+  });
+}
+
+
+export async function upsertMetric(db, metric) {
+  const store = tx(db, "metrics", "readwrite");
+  const req = store.put(metric); // { date, bodyweightLb?, calories?, updatedAt }
+  return promisifyRequest(req);
+}
+
+export async function getMetricByDate(db, date) {
+  const store = tx(db, "metrics", "readonly");
+  const req = store.get(date);
+  return promisifyRequest(req);
+}
+
+export async function listMetricsInRange(db, fromDate, toDate) {
+  const store = tx(db, "metrics", "readonly");
+  const req = store.openCursor();
+
+  const out = [];
+  return new Promise((resolve, reject) => {
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (!cursor) return resolve(out);
+
+      const m = cursor.value;
+      if (m.date >= fromDate && m.date <= toDate) out.push(m);
+
+      cursor.continue();
+    };
     req.onerror = () => reject(req.error);
   });
 }
