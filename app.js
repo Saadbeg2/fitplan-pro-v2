@@ -83,44 +83,44 @@ function daysDiff(aISO, bISO) {
 }
 
 function computeStreak(trackedDatesSet) {
-    if (trackedDatesSet.size === 0) return 0;
-  
-    // anchor on latest tracked date, not today
-    const latestISO = Array.from(trackedDatesSet).sort().pop();
-    let streak = 0;
-  
-    while (true) {
-      const d = new Date(latestISO + "T00:00:00");
-      d.setDate(d.getDate() - streak);
-      const key = isoDateLocal(d);
-  
-      if (trackedDatesSet.has(key)) streak++;
-      else break;
-    }
-  
-    return streak;
+  if (trackedDatesSet.size === 0) return 0;
+
+  // anchor on latest tracked date, not today
+  const latestISO = Array.from(trackedDatesSet).sort().pop();
+  let streak = 0;
+
+  while (true) {
+    const d = new Date(latestISO + "T00:00:00");
+    d.setDate(d.getDate() - streak);
+    const key = isoDateLocal(d);
+
+    if (trackedDatesSet.has(key)) streak++;
+    else break;
   }
+
+  return streak;
+}
 function animateStreakIfImproved(newStreak) {
-    const key = "fitplan_last_streak";
-    const prev = Number(localStorage.getItem(key) || "0");
-  
-    // Only celebrate increases (not first load, not same, not decrease)
-    if (prev > 0 && newStreak > prev) {
-      const node = el("streakValue");
-      node.classList.remove("streak-animate"); // reset if rapid
-      // force reflow so animation restarts reliably
-      void node.offsetWidth;
-      node.classList.add("streak-animate");
-  
-      node.addEventListener(
-        "animationend",
-        () => node.classList.remove("streak-animate"),
-        { once: true }
-      );
-    }
-  
-    localStorage.setItem(key, String(newStreak));
+  const key = "fitplan_last_streak";
+  const prev = Number(localStorage.getItem(key) || "0");
+
+  // Only celebrate increases (not first load, not same, not decrease)
+  if (prev > 0 && newStreak > prev) {
+    const node = el("streakValue");
+    node.classList.remove("streak-animate"); // reset if rapid
+    // force reflow so animation restarts reliably
+    void node.offsetWidth;
+    node.classList.add("streak-animate");
+
+    node.addEventListener(
+      "animationend",
+      () => node.classList.remove("streak-animate"),
+      { once: true }
+    );
   }
+
+  localStorage.setItem(key, String(newStreak));
+}
 
 /* -----------------------------
    Week State
@@ -431,6 +431,129 @@ async function renderRecent(db) {
 }
 
 /* -----------------------------
+   History: Charts + BMI + Calories (placeholder-first)
+----------------------------- */
+
+const HEIGHT_IN = 71.5; // 5'11.5" (change later if you want)
+
+function calcBMI(weightLb, heightIn) {
+  const w = Number(weightLb || 0);
+  const h = Number(heightIn || 0);
+  if (!Number.isFinite(w) || w <= 0) return null;
+  if (!Number.isFinite(h) || h <= 0) return null;
+  return (w / (h * h)) * 703;
+}
+
+function fmt1(n) {
+  return Math.round(n * 10) / 10;
+}
+
+function buildPlaceholderSeries(todayISO, days = 14) {
+  const labels = [];
+  const weights = [];
+  const calories = [];
+
+  const baseW = 256;     // your current weight baseline
+  const baseC = 2600;    // placeholder calories baseline
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(todayISO + "T00:00:00");
+    d.setDate(d.getDate() - i);
+    const iso = isoDateLocal(d);
+
+    labels.push(iso.slice(5)); // "MM-DD" looks clean
+
+    // gentle trend + noise
+    const w = baseW - (days - 1 - i) * 0.2 + (Math.random() - 0.5) * 0.6;
+    const c = baseC + (Math.random() - 0.5) * 400;
+
+    weights.push(fmt1(w));
+    calories.push(Math.round(c));
+  }
+
+  return { labels, weights, calories };
+}
+
+let weightChartInstance = null;
+let calChartInstance = null;
+
+function renderCharts({ labels, weights, calories }) {
+  // guard if Chart.js didn’t load
+  if (!window.Chart) return;
+
+  const wCtx = el("weightChart").getContext("2d");
+  const cCtx = el("calChart").getContext("2d");
+
+  // destroy previous if re-rendering
+  if (weightChartInstance) weightChartInstance.destroy();
+  if (calChartInstance) calChartInstance.destroy();
+
+  weightChartInstance = new Chart(wCtx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{ label: "Bodyweight (lb)", data: weights, tension: 0.3 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { ticks: { precision: 0 } } }
+    }
+  });
+
+  calChartInstance = new Chart(cCtx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{ label: "Calories", data: calories }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  // range labels
+  const wMin = Math.min(...weights);
+  const wMax = Math.max(...weights);
+  el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
+
+  const cMin = Math.min(...calories);
+  const cMax = Math.max(...calories);
+  el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
+}
+
+function enableQuickTrackUI(enabled) {
+  const bw = elOpt("bwInput");
+  const cal = elOpt("calInput");
+  const sBW = elOpt("btnSaveBW");
+  const sCal = elOpt("btnSaveCal");
+
+  if (bw) bw.disabled = !enabled;
+  if (cal) cal.disabled = !enabled;
+  if (sBW) sBW.disabled = !enabled;
+  if (sCal) sCal.disabled = !enabled;
+}
+
+function wireBMI() {
+  const bw = elOpt("bwInput");
+  const height = elOpt("heightInput");
+  const bmiLabel = elOpt("bmiLabel");
+  if (!bw || !height || !bmiLabel) return;
+
+  const update = () => {
+    const bmi = calcBMI(bw.value, height.value || 71.5);
+    bmiLabel.textContent = bmi ? `BMI: ${fmt1(bmi)}` : "BMI: —";
+  };
+
+  bw.addEventListener("input", update);
+  height.addEventListener("input", update);
+  update();
+}
+
+/* -----------------------------
    Main
 ----------------------------- */
 
@@ -438,12 +561,21 @@ async function main() {
   await registerSW();
   const db = await openDB();
 
+    const todayISO = isoDateLocal(new Date());
+
   // nav wiring
   el("navHome").onclick = () => goScreen("screenHome");
   el("navLog").onclick = () => goScreen("screenLog");
   el("navHistory").onclick = () => {
     goScreen("screenHistory");
-    renderRecent(db).catch(() => {});
+    renderRecent(db).catch(() => { });
+
+    // default: render placeholder trends
+    const series = buildPlaceholderSeries(todayISO, 14);
+    renderCharts(series);
+
+    enableQuickTrackUI(true);
+    wireBMI();
   };
 
   el("btnLogBackHome").onclick = () => goScreen("screenHome");
@@ -467,7 +599,18 @@ async function main() {
     };
   }
 
-  const todayISO = isoDateLocal(new Date());
+
+
+  // History: placeholder button
+  const btnUsePlaceholder = elOpt("btnUsePlaceholder");
+  if (btnUsePlaceholder) {
+    btnUsePlaceholder.onclick = () => {
+      const series = buildPlaceholderSeries(todayISO, 14);
+      renderCharts(series);
+      enableQuickTrackUI(true);
+      wireBMI();
+    };
+  }
 
   // weekly state
   let ws = await ensureWeekState(db);
@@ -544,30 +687,30 @@ async function main() {
   };
 
   // build exercises
-const dayPlan = PLAN.days[nextDay];
-for (const ex of dayPlan.exercises) {
-  listEl.appendChild(buildExerciseCard(ex, nextDay));
-}
-
-// finish enabled only when weights filled
-function syncFinishEnabled() {
-  btnFinish.disabled = !allWorkoutWeightsFilled();
-}
-
-// initial state (after inputs exist)
-syncFinishEnabled();
-
-// AUTO-FILL LAST TIME'S WEIGHTS
-const didFill = await autofillWeightsForDay(db, nextDay, dayPlan, todayISO);
-if (didFill) syncFinishEnabled();
-
-// live validation
-listEl.addEventListener("input", (e) => {
-  const t = e.target;
-  if (t && t.matches && t.matches("input[data-field='weight']")) {
-    syncFinishEnabled();
+  const dayPlan = PLAN.days[nextDay];
+  for (const ex of dayPlan.exercises) {
+    listEl.appendChild(buildExerciseCard(ex, nextDay));
   }
-});
+
+  // finish enabled only when weights filled
+  function syncFinishEnabled() {
+    btnFinish.disabled = !allWorkoutWeightsFilled();
+  }
+
+  // initial state (after inputs exist)
+  syncFinishEnabled();
+
+  // AUTO-FILL LAST TIME'S WEIGHTS
+  const didFill = await autofillWeightsForDay(db, nextDay, dayPlan, todayISO);
+  if (didFill) syncFinishEnabled();
+
+  // live validation
+  listEl.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t && t.matches && t.matches("input[data-field='weight']")) {
+      syncFinishEnabled();
+    }
+  });
 
   btnFinish.onclick = async () => {
     const dayToSave = ws.active ? nextDay : 1;

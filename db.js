@@ -1,5 +1,5 @@
 const DB_NAME = "fitplan_pro_v2";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 function promisifyRequest(req) {
   return new Promise((resolve, reject) => {
@@ -189,23 +189,23 @@ export async function deleteSessionsAndLogsInDateRange(db, fromDate, toDate) {
 }
 
 export async function listSetLogsForSession(db, sessionId) {
-    const store = db.transaction("setLogs", "readonly").objectStore("setLogs");
-    const idx = store.index("bySessionId");
-    const req = idx.openCursor(IDBKeyRange.only(sessionId));
-  
-    const out = [];
-    return new Promise((resolve, reject) => {
-      req.onsuccess = (e) => {
-        const cursor = e.target.result;
-        if (!cursor) return resolve(out);
-        out.push(cursor.value);
-        cursor.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
-  }
+  const store = db.transaction("setLogs", "readonly").objectStore("setLogs");
+  const idx = store.index("bySessionId");
+  const req = idx.openCursor(IDBKeyRange.only(sessionId));
 
-  // Returns a Map: setNumber -> weight (latest before beforeDateISO)
+  const out = [];
+  return new Promise((resolve, reject) => {
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (!cursor) return resolve(out);
+      out.push(cursor.value);
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Returns a Map: setNumber -> weight (latest before beforeDateISO)
 export async function getLatestWeightsForExercise(db, dayNumber, exerciseName, beforeDateISO) {
   const store = db.transaction("setLogs", "readonly").objectStore("setLogs");
   const idx = store.index("byDayExercise");

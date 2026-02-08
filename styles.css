@@ -336,3 +336,27 @@
     animation: streakPop 420ms ease-out, streakGlow 600ms ease-out;
     will-change: transform, text-shadow;
   }
+
+  /* ---------- Charts ---------- */
+.chartWrap{
+  margin-top:10px;
+  border:1px solid var(--line);
+  background:#0f0f12;
+  border-radius:var(--radius2);
+  padding:10px;
+  overflow:hidden;
+}
+
+.chartWrap canvas{
+  width:100% !important;
+  height:220px !important;
+  display:block;
+}
+
+/* optional: label spacing */
+#weightRangeLabel,
+#calRangeLabel{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:2px;
+}
