@@ -1,0 +1,82 @@
+FITPLAN PRO v2 — FIXED 5-DAY SPLIT (SET IN STONE)
+
+RULES
+- Day-based system (no dates)
+- Track ONLY: exercise, set #, reps, weight
+- Heavy days = low reps / high weight
+- Light days = high reps / lower weight
+- Do not change this split during the project
+
+----------------------------------------
+
+DAY 1 — HEAVY CHEST + TRICEPS (+ SIDE DELTS)
+1. Barbell Bench Press — 4 x 4–6
+2. Incline DB Press — 3 x 6–8
+3. Weighted Dips (or Machine Dips) — 3 x 6–8
+4. Cable Fly (mid or low-to-high) — 2 x 10–12
+5. Close-Grip Bench OR Skull Crushers — 3 x 6–8
+6. Rope Pushdown — 2 x 10–12
+7. Lateral Raises — 3 x 12–15
+
+----------------------------------------
+
+DAY 2 — HEAVY BACK + BICEPS (+ REAR DELTS / TRAPS / FOREARMS)
+1. Weighted Pull-Ups OR Heavy Lat Pulldown — 4 x 4–6
+2. Barbell Row OR Chest-Supported Row — 3 x 5–8
+3. One-Arm DB Row — 3 x 6–8
+4. Seated Cable Row — 2 x 8–10
+5. Face Pulls — 3 x 12–15
+6. Barbell Curl — 3 x 6–8
+7. Hammer Curl — 2 x 8–10
+8. Shrugs — 2 x 8–12
+
+----------------------------------------
+
+DAY 3 — LEGS + SHOULDERS (+ CALVES / ABS / ROTATOR CUFF)
+
+LEGS
+1. Back Squat OR Leg Press — 4 x 5–8
+2. Romanian Deadlift — 3 x 6–8
+3. Leg Curl — 3 x 8–12
+4. Walking Lunges — 2 x 10–12 per leg
+5. Calf Raises — 4 x 10–15
+
+SHOULDERS
+6. Overhead Press — 3 x 5–8
+7. Lateral Raises — 3 x 12–15
+8. Rear Delt Fly — 3 x 12–15
+
+CORE / SHOULDER HEALTH
+9. Hanging Knee Raises OR Cable Crunch — 3 x 10–15
+10. Cable External Rotations — 2 x 12–20 per side
+
+----------------------------------------
+
+DAY 4 — LIGHT CHEST + TRICEPS (HIGH REPS)
+1. Incline Bench (DB or Bar) — 3 x 8–12
+2. Machine Chest Press — 3 x 10–15
+3. Push-Ups (weighted if needed) — 2 x AMRAP
+4. Cable Fly — 3 x 12–20
+5. Overhead Triceps Extension — 3 x 12–15
+6. Rope Pushdown — 3 x 12–20
+7. Lateral Raises — 3 x 15–20
+
+----------------------------------------
+
+DAY 5 — LIGHT BACK + BICEPS (HIGH REPS) (+ REAR DELTS / FOREARMS / ABS)
+1. Lat Pulldown — 3 x 10–15
+2. Chest-Supported Row — 3 x 10–15
+3. Cable Row (wide or close) — 2 x 12–20
+4. Straight-Arm Pulldown — 2 x 12–20
+5. Face Pulls — 3 x 15–20
+6. Incline DB Curls — 3 x 10–15
+7. Cable Curl OR Preacher Curl — 2 x 12–20
+8. Wrist Curls OR Farmer Holds — 2 x 12–20
+9. Plank — 3 x 45–75 seconds
+
+----------------------------------------
+
+TRACKING INTENT
+- Workouts are inputs
+- Progress = trends across sessions of the same Day + Exercise
+- No plan changes, only numbers change

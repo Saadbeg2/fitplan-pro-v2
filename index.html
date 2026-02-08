@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#111111" />
+    <title>FitPlan Pro v2</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <!-- Minimal header -->
+    <header class="header">
+      <div class="headerLeft">
+        <div class="appTitle">FitPlan Pro v2</div>
+        <div class="sub" id="headerSub">—</div>
+      </div>
+
+      <div class="badges">
+        <div class="badge" id="todayBadge">Today: —</div>
+        <div class="badge" id="statusBadge">Status: —</div>
+      </div>
+    </header>
+
+    <main class="container">
+      <!-- =========================
+           HOME (Control Panel)
+           ========================= -->
+      <section class="screen" id="screenHome">
+        <!-- Single Home Card (Simplified) -->
+        <section class="card" id="homePrimaryCard">
+          <div class="homeStack">
+            <div>
+              <div class="homeLabel">Current streak</div>
+              <div class="homeStreak" id="streakValue">—</div>
+              <div class="muted small" id="streakHint">—</div>
+            </div>
+
+            <div class="homeWeek" id="homeWeekBlock">
+              <div class="homeWeekTitle" id="homeTitle">—</div>
+              <div class="muted" id="homeSubtitle">—</div>
+            </div>
+
+            <button id="btnHomeLogWorkout" class="btn primary">Log today</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- =========================
+           LOG (Execution Mode)
+           ========================= -->
+      <section class="screen" id="screenLog" style="display:none">
+        <section class="card" id="logCard">
+          <div class="rowBetween">
+            <div>
+              <h2 id="logTitle" style="margin-bottom:4px">—</h2>
+              <div class="muted small" id="logSub">—</div>
+            </div>
+            <button id="btnLogBackHome" class="btn tiny secondary" type="button">Home</button>
+          </div>
+
+          <div id="exerciseList" class="exerciseList"></div>
+
+          <div class="actions">
+            <button id="btnMarkRest" class="btn secondary">Log Rest</button>
+            <button id="btnFinishDay" class="btn primary">Finish Workout</button>
+          </div>
+        </section>
+
+        <!-- Summary (end-of-workout, last-week comparison) -->
+        <section class="card" id="summaryCard" style="display:none">
+          <h2>Workout Summary</h2>
+          <p class="muted" id="summaryHint">—</p>
+          <div id="summaryTable" class="summaryTable"></div>
+          <div class="actions">
+            <button id="btnSummaryDone" class="btn primary">Return Home</button>
+          </div>
+        </section>
+      </section>
+
+      <!-- =========================
+           HISTORY
+           ========================= -->
+      <section class="screen" id="screenHistory" style="display:none">
+        <section class="card">
+          <div class="rowBetween">
+            <h2 style="margin:0">History</h2>
+            <button id="btnHistoryRefresh" class="btn tiny secondary" type="button">Refresh</button>
+          </div>
+          <div id="recentLogs" class="recent" style="margin-top:12px"></div>
+
+          <!-- Quick Track placeholders moved to History (collapsed) -->
+          <div class="divider" style="margin:14px 0"></div>
+
+          <div class="rowBetween">
+            <h3 style="margin:0">Quick Track</h3>
+            <button class="btn tiny" id="btnToggleQuickTrack" type="button">Expand</button>
+          </div>
+
+          <div id="quickTrackBody" class="quickTrackBody" style="display:none; margin-top:10px">
+            <div class="grid2">
+              <div class="field">
+                <div class="fieldLabel">Bodyweight (lb)</div>
+                <input class="input" id="bwInput" type="number" min="0" placeholder="—" disabled />
+                <div class="small muted" id="bmiLabel">BMI: —</div>
+                <button class="btn secondary" id="btnSaveBW" disabled>Save</button>
+              </div>
+
+              <div class="field">
+                <div class="fieldLabel">Calories</div>
+                <input class="input" id="calInput" type="number" min="0" placeholder="—" disabled />
+                <div class="small muted">—</div>
+                <button class="btn secondary" id="btnSaveCal" disabled>Save</button>
+              </div>
+            </div>
+
+            <div class="small muted" style="margin-top:10px">
+              (Placeholders — we’ll wire these later.)
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="nav">
+      <button class="navItem active" id="navHome" type="button">Home</button>
+      <button class="navItem" id="navLog" type="button">Log</button>
+      <button class="navItem" id="navHistory" type="button">History</button>
+    </nav>
+
+    <footer class="footer">
+      <span>Offline-ready. Stored locally in IndexedDB.</span>
+    </footer>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
