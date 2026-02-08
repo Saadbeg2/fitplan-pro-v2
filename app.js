@@ -56,7 +56,7 @@ function findLatestMetric(metrics) {
   if (!metrics || metrics.length === 0) return null;
   const sorted = [...metrics].sort((a, b) => (a.date < b.date ? -1 : 1));
   for (let i = sorted.length - 1; i >= 0; i--) {
-    if (sorted[i]?.bodyweightLb || sorted[i]?.calories) return sorted[i];
+    if (Number.isFinite(sorted[i]?.bodyweightLb) || Number.isFinite(sorted[i]?.calories)) return sorted[i];
   }
   return sorted[sorted.length - 1] || null;
 }
@@ -150,7 +150,7 @@ async function renderStats(db, todayISO) {
   const streak = computeStreak(trackedDatesSet);
 
   const streakNode = elOpt("statStreak");
-  if (streakNode) streakNode.textContent = `Streak: ${streak}`;
+  if (streakNode) streakNode.textContent = `${streak}`;
 
   // workouts 7d/30d
   const d7s = new Date(todayISO + "T00:00:00");
@@ -809,7 +809,10 @@ async function main() {
 
   // nav wiring
   el("navHome").onclick = () => goScreen("screenHome");
-  el("navStats").onclick = () => goScreen("screenStats");
+  el("navStats").onclick = async () => {
+  goScreen("screenStats");
+  await renderStats(db, todayISO);
+};
 
   el("navHistory").onclick = async () => {
     goScreen("screenHistory");
