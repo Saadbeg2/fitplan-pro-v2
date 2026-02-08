@@ -590,6 +590,7 @@ async function main() {
         bodyweightLb: val,
         updatedAt: Date.now()
       });
+      el("navHistory").click(); // re-loads charts from DB
 
       alert("Bodyweight saved.");
     };
@@ -614,7 +615,7 @@ async function main() {
         calories: val,
         updatedAt: Date.now()
       });
-
+el("navHistory").click(); // re-loads charts from DB
       alert("Calories saved.");
     };
   }
@@ -659,7 +660,7 @@ async function main() {
 
   enableQuickTrackUI(true);
   wireBMI();
-};
+  };
 
   el("btnLogBackHome").onclick = () => goScreen("screenHome");
 
