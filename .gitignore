@@ -1,0 +1,28 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Node / tooling (future-proof)
+node_modules/
+
+# Build artifacts (future-proof)
+dist/
+build/
+
+# Env files
+.env
+.env.local
+
+# IndexedDB / local dev artifacts
+*.sqlite
+*.db
+
+# Service worker cache (generated at runtime)
+sw.js.map
