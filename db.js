@@ -204,3 +204,50 @@ export async function listSetLogsForSession(db, sessionId) {
       req.onerror = () => reject(req.error);
     });
   }
+
+  // Returns a Map: setNumber -> weight (latest before beforeDateISO)
+export async function getLatestWeightsForExercise(db, dayNumber, exerciseName, beforeDateISO) {
+  const store = db.transaction("setLogs", "readonly").objectStore("setLogs");
+  const idx = store.index("byDayExercise");
+  const req = idx.openCursor(IDBKeyRange.only([dayNumber, exerciseName]));
+
+  const bestBySet = new Map(); // setNumber -> { weight, date, createdAt }
+
+  return new Promise((resolve, reject) => {
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (!cursor) {
+        const out = new Map();
+        for (const [setNumber, rec] of bestBySet.entries()) out.set(setNumber, rec.weight);
+        return resolve(out);
+      }
+
+      const log = cursor.value;
+
+      // Only use logs from BEFORE today
+      if (!beforeDateISO || (log.date && log.date < beforeDateISO)) {
+        const setNumber = Number(log.setNumber);
+        const prev = bestBySet.get(setNumber);
+
+        const prevDate = prev?.date || "";
+        const prevCreated = prev?.createdAt || 0;
+
+        const isNewer =
+          (log.date || "") > prevDate ||
+          ((log.date || "") === prevDate && (log.createdAt || 0) > prevCreated);
+
+        if (!prev || isNewer) {
+          bestBySet.set(setNumber, {
+            weight: Number(log.weight || 0),
+            date: log.date || "",
+            createdAt: Number(log.createdAt || 0)
+          });
+        }
+      }
+
+      cursor.continue();
+    };
+
+    req.onerror = () => reject(req.error);
+  });
+}

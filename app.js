@@ -9,7 +9,8 @@ import {
   listSessionsInRange,
   getWeekState,
   setWeekState,
-  deleteSessionsAndLogsInDateRange
+  deleteSessionsAndLogsInDateRange,
+  getLatestWeightsForExercise // 👈 add this
 } from "./db.js";
 
 /* -----------------------------
@@ -59,6 +60,7 @@ function goScreen(name) {
   if (name === "screenLog") setActiveNav("navLog");
   if (name === "screenHistory") setActiveNav("navHistory");
 }
+
 
 function formatSessionLabel(s) {
   if (s.type === "REST") return `${s.date} — Rest tracked`;
@@ -242,6 +244,29 @@ function buildExerciseCard(ex, dayNumber) {
   return wrap;
 }
 
+async function autofillWeightsForDay(db, dayNumber, dayPlan, todayISO) {
+  let filledAny = false;
+
+  for (const ex of dayPlan.exercises) {
+    const weightsMap = await getLatestWeightsForExercise(db, dayNumber, ex.name, todayISO);
+
+    // Fill each set input if we have a saved weight > 0
+    for (let i = 1; i <= ex.sets; i++) {
+      const w = weightsMap.get(i);
+      if (!w || w <= 0) continue;
+
+      const input = document.querySelector(
+        `input[data-field="weight"][data-exercise="${CSS.escape(ex.name)}"][data-set="${i}"]`
+      );
+      if (input && input.value === "") {
+        input.value = String(w);
+        filledAny = true;
+      }
+    }
+  }
+
+  return filledAny;
+}
 function allWorkoutWeightsFilled() {
   const weights = Array.from(document.querySelectorAll("input[data-field='weight']"));
   if (weights.length === 0) return false;
@@ -479,11 +504,6 @@ async function main() {
   const nextDay = ws.active ? computeNextWorkoutDay(ws) : 1;
   renderLogHeader(ws, todayISO, todaySession, nextDay);
 
-  // build exercises
-  const dayPlan = PLAN.days[nextDay];
-  for (const ex of dayPlan.exercises) {
-    listEl.appendChild(buildExerciseCard(ex, nextDay));
-  }
 
   // rest button rules
   btnRest.disabled = !ws.active || ws.restDaysUsed >= 2;
@@ -523,19 +543,31 @@ async function main() {
     goScreen("screenHome");
   };
 
-  // finish enabled only when weights filled
-  function syncFinishEnabled() {
-    btnFinish.disabled = !allWorkoutWeightsFilled();
+  // build exercises
+const dayPlan = PLAN.days[nextDay];
+for (const ex of dayPlan.exercises) {
+  listEl.appendChild(buildExerciseCard(ex, nextDay));
+}
+
+// finish enabled only when weights filled
+function syncFinishEnabled() {
+  btnFinish.disabled = !allWorkoutWeightsFilled();
+}
+
+// initial state (after inputs exist)
+syncFinishEnabled();
+
+// AUTO-FILL LAST TIME'S WEIGHTS
+const didFill = await autofillWeightsForDay(db, nextDay, dayPlan, todayISO);
+if (didFill) syncFinishEnabled();
+
+// live validation
+listEl.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t && t.matches && t.matches("input[data-field='weight']")) {
+    syncFinishEnabled();
   }
-
-  syncFinishEnabled();
-
-  listEl.addEventListener("input", (e) => {
-    const t = e.target;
-    if (t && t.matches && t.matches("input[data-field='weight']")) {
-      syncFinishEnabled();
-    }
-  });
+});
 
   btnFinish.onclick = async () => {
     const dayToSave = ws.active ? nextDay : 1;
