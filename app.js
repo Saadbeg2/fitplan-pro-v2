@@ -531,6 +531,7 @@ const cMax = cVals.length ? Math.max(...cVals) : 0;
 
 el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
 el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
+}
 
 function enableQuickTrackUI(enabled) {
   const bw = elOpt("bwInput");
@@ -621,6 +622,7 @@ async function main() {
   // nav wiring
   el("navHome").onclick = () => goScreen("screenHome");
   el("navLog").onclick = () => goScreen("screenLog");
+  
   el("navHistory").onclick = async () => {
   goScreen("screenHistory");
   renderRecent(db).catch(() => {});
@@ -634,7 +636,7 @@ async function main() {
   if (metrics.length === 0) {
     renderCharts(buildPlaceholderSeries(todayISO, 14));
   } else {
-    const byDate = new Map(metrics.map(m => [m.date, m]));
+    const byDate = new Map(metrics.map((m) => [m.date, m]));
 
     const labels = [];
     const weights = [];
