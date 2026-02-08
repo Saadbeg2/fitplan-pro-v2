@@ -1,12 +1,14 @@
 const CACHE_NAME = "fitplan-pro-v2-cache-v2"; // 👈 bump version
+const BASE = self.registration.scope;
+
 const ASSETS = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./db.js",
-  "./plan.js",
-  "./manifest.webmanifest"
+  BASE,
+  BASE + "index.html",
+  BASE + "styles.css",
+  BASE + "app.js",
+  BASE + "db.js",
+  BASE + "plan.js",
+  BASE + "manifest.webmanifest"
 ];
 
 self.addEventListener("install", (event) => {
