@@ -1,4 +1,4 @@
-const CACHE_NAME = "fitplan-pro-v2-cache-v2"; // 👈 bump version
+const CACHE_NAME = "fitplan-pro-v2-cache-v2-6";
 const BASE = self.registration.scope;
 
 const ASSETS = [
@@ -8,31 +8,31 @@ const ASSETS = [
   BASE + "app.js",
   BASE + "db.js",
   BASE + "plan.js",
-  BASE + "manifest.webmanifest"
+  BASE + "manifest.webmanifest",
+  BASE + "sw.js",
 ];
 
 self.addEventListener("install", (event) => {
-  self.skipWaiting(); // 👈 activate immediately
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
-  );
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.map((k) => (k === CACHE_NAME ? null : caches.delete(k)))
-      )
-    )
-  );
-  self.clients.claim(); // 👈 control tabs immediately
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => (k === CACHE_NAME ? null : caches.delete(k))));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
 
-  // Network-first for JS/CSS (so updates apply)
+  // Network-first for JS/CSS
   if (req.url.endsWith(".js") || req.url.endsWith(".css")) {
     event.respondWith(
       fetch(req)
@@ -47,7 +47,5 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Cache-first for everything else
-  event.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req))
-  );
+  event.respondWith(caches.match(req).then((cached) => cached || fetch(req)));
 });
