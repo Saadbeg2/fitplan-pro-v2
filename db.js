@@ -289,3 +289,72 @@ export async function listMetricsInRange(db, fromDate, toDate) {
     req.onerror = () => reject(req.error);
   });
 }
+
+async function listAllFromStore(db, storeName) {
+  const store = tx(db, storeName, "readonly");
+  const req = store.openCursor();
+  const out = [];
+  return new Promise((resolve, reject) => {
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (!cursor) return resolve(out);
+      out.push(cursor.value);
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function listAllSessions(db) {
+  return listAllFromStore(db, "sessions");
+}
+
+export async function listAllSetLogs(db) {
+  return listAllFromStore(db, "setLogs");
+}
+
+export async function listAllMetrics(db) {
+  return listAllFromStore(db, "metrics");
+}
+
+export async function clearAllData(db) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(["sessions", "setLogs", "metrics", "weekState"], "readwrite");
+    t.objectStore("sessions").clear();
+    t.objectStore("setLogs").clear();
+    t.objectStore("metrics").clear();
+    t.objectStore("weekState").clear();
+    t.oncomplete = () => resolve(true);
+    t.onerror = () => reject(t.error);
+  });
+}
+
+export async function bulkUpsertSessions(db, sessions = []) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("sessions", "readwrite");
+    const store = t.objectStore("sessions");
+    for (const row of sessions) store.put(row);
+    t.oncomplete = () => resolve(true);
+    t.onerror = () => reject(t.error);
+  });
+}
+
+export async function bulkUpsertSetLogs(db, setLogs = []) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("setLogs", "readwrite");
+    const store = t.objectStore("setLogs");
+    for (const row of setLogs) store.put(row);
+    t.oncomplete = () => resolve(true);
+    t.onerror = () => reject(t.error);
+  });
+}
+
+export async function bulkUpsertMetrics(db, metrics = []) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("metrics", "readwrite");
+    const store = t.objectStore("metrics");
+    for (const row of metrics) store.put(row);
+    t.oncomplete = () => resolve(true);
+    t.onerror = () => reject(t.error);
+  });
+}

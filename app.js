@@ -14,6 +14,13 @@ import {
   upsertMetric,
   getMetricByDate,
   listMetricsInRange,
+  listAllSessions,
+  listAllSetLogs,
+  listAllMetrics,
+  clearAllData,
+  bulkUpsertSessions,
+  bulkUpsertSetLogs,
+  bulkUpsertMetrics,
 } from "./db.js";
 
 /* -----------------------------
@@ -827,6 +834,178 @@ function wireBMI() {
   update();
 }
 
+function downloadBlob(filename, blob) {
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+function csvCell(v) {
+  if (v === null || v === undefined) return "";
+  const s = String(v);
+  if (s.includes('"') || s.includes(",") || s.includes("\n") || s.includes("\r")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+function toCSV(rows, columns) {
+  const header = columns.join(",");
+  const lines = rows.map((row) => columns.map((col) => csvCell(row?.[col])).join(","));
+  return [header, ...lines].join("\r\n");
+}
+
+function readFileText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+    reader.readAsText(file);
+  });
+}
+
+function sanitizeWeekState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const completed = Array.isArray(raw.completedWorkoutDays)
+    ? Array.from(
+      new Set(
+        raw.completedWorkoutDays
+          .map((d) => Number(d))
+          .filter((d) => Number.isInteger(d) && d >= 1 && d <= 5)
+      )
+    ).sort((a, b) => a - b)
+    : [];
+  const restDays = Number(raw.restDaysUsed);
+  const safeRestDays = Number.isFinite(restDays) && restDays >= 0 ? Math.floor(restDays) : 0;
+  const startDate = typeof raw.startDate === "string" && raw.startDate ? raw.startDate : null;
+  const active = Boolean(raw.active);
+  if (active && !startDate) return null;
+  return {
+    id: "current",
+    active,
+    startDate,
+    completedWorkoutDays: completed,
+    restDaysUsed: Math.min(2, safeRestDays)
+  };
+}
+
+function isISODate(value) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isObj(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateSessionRows(rows) {
+  if (!Array.isArray(rows)) return { ok: false, rows: [], message: "sessions must be an array." };
+  const out = [];
+  for (const r of rows) {
+    if (!isObj(r)) return { ok: false, rows: [], message: "sessions contains invalid row." };
+    if (typeof r.id !== "string" || !r.id) return { ok: false, rows: [], message: "session.id missing/invalid." };
+    if (!isISODate(r.date)) return { ok: false, rows: [], message: "session.date must be YYYY-MM-DD." };
+    if (r.type !== "WORKOUT" && r.type !== "REST") return { ok: false, rows: [], message: "session.type invalid." };
+    const dayNumber = Number(r.dayNumber);
+    if (!Number.isInteger(dayNumber) || dayNumber < 0 || dayNumber > 5) {
+      return { ok: false, rows: [], message: "session.dayNumber invalid." };
+    }
+    const createdAt = Number(r.createdAt);
+    const updatedAt = Number(r.updatedAt);
+    if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt)) {
+      return { ok: false, rows: [], message: "session timestamps invalid." };
+    }
+    out.push({ ...r, dayNumber, createdAt, updatedAt });
+  }
+  return { ok: true, rows: out };
+}
+
+function validateSetLogRows(rows) {
+  if (!Array.isArray(rows)) return { ok: false, rows: [], message: "setLogs must be an array." };
+  const out = [];
+  for (const r of rows) {
+    if (!isObj(r)) return { ok: false, rows: [], message: "setLogs contains invalid row." };
+    if (typeof r.id !== "string" || !r.id) return { ok: false, rows: [], message: "setLog.id missing/invalid." };
+    if (typeof r.sessionId !== "string" || !r.sessionId) return { ok: false, rows: [], message: "setLog.sessionId missing/invalid." };
+    if (!isISODate(r.date)) return { ok: false, rows: [], message: "setLog.date must be YYYY-MM-DD." };
+    if (r.type !== "WORKOUT" && r.type !== "REST") return { ok: false, rows: [], message: "setLog.type invalid." };
+    if (typeof r.exerciseName !== "string" || !r.exerciseName) return { ok: false, rows: [], message: "setLog.exerciseName missing/invalid." };
+    const dayNumber = Number(r.dayNumber);
+    const setNumber = Number(r.setNumber);
+    const reps = Number(r.reps);
+    const weight = Number(r.weight);
+    const createdAt = Number(r.createdAt);
+    if (!Number.isInteger(dayNumber) || dayNumber < 0 || dayNumber > 5) return { ok: false, rows: [], message: "setLog.dayNumber invalid." };
+    if (!Number.isInteger(setNumber) || setNumber < 1) return { ok: false, rows: [], message: "setLog.setNumber invalid." };
+    if (!Number.isFinite(reps) || reps < 0) return { ok: false, rows: [], message: "setLog.reps invalid." };
+    if (!Number.isFinite(weight) || weight < 0) return { ok: false, rows: [], message: "setLog.weight invalid." };
+    if (!Number.isFinite(createdAt)) return { ok: false, rows: [], message: "setLog.createdAt invalid." };
+    out.push({ ...r, dayNumber, setNumber, reps, weight, createdAt });
+  }
+  return { ok: true, rows: out };
+}
+
+function validateMetricRows(rows) {
+  if (!Array.isArray(rows)) return { ok: false, rows: [], message: "metrics must be an array." };
+  const out = [];
+  for (const r of rows) {
+    if (!isObj(r)) return { ok: false, rows: [], message: "metrics contains invalid row." };
+    if (!isISODate(r.date)) return { ok: false, rows: [], message: "metric.date must be YYYY-MM-DD." };
+    const bodyweightLb = r.bodyweightLb == null ? null : Number(r.bodyweightLb);
+    const calories = r.calories == null ? null : Number(r.calories);
+    const updatedAt = Number(r.updatedAt);
+    if (bodyweightLb !== null && !Number.isFinite(bodyweightLb)) return { ok: false, rows: [], message: "metric.bodyweightLb invalid." };
+    if (calories !== null && !Number.isFinite(calories)) return { ok: false, rows: [], message: "metric.calories invalid." };
+    if (!Number.isFinite(updatedAt)) return { ok: false, rows: [], message: "metric.updatedAt invalid." };
+    out.push({ ...r, bodyweightLb, calories, updatedAt });
+  }
+  return { ok: true, rows: out };
+}
+
+function rebuildWeekStateFromSessions(sessions, todayISO) {
+  const base = defaultWeekState();
+  const startD = new Date(todayISO + "T00:00:00");
+  startD.setDate(startD.getDate() - 6);
+  const windowStartISO = isoDateLocal(startD);
+
+  const inCurrentWindow = sessions.filter((s) => s?.date >= windowStartISO && s?.date <= todayISO);
+  const workouts = inCurrentWindow
+    .filter((s) => s?.type === "WORKOUT" && Number.isInteger(Number(s?.dayNumber)))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  if (workouts.length === 0) return base;
+
+  const startDate = workouts[0].date;
+  const endD = new Date(startDate + "T00:00:00");
+  endD.setDate(endD.getDate() + 6);
+  const endISO = isoDateLocal(endD);
+
+  const weekRows = sessions.filter((s) => s?.date >= startDate && s?.date <= endISO);
+  const completedWorkoutDays = Array.from(
+    new Set(
+      weekRows
+        .filter((s) => s?.type === "WORKOUT")
+        .map((s) => Number(s?.dayNumber))
+        .filter((d) => Number.isInteger(d) && d >= 1 && d <= 5)
+    )
+  ).sort((a, b) => a - b);
+
+  const restDaysUsed = weekRows.filter((s) => s?.type === "REST").length;
+
+  return {
+    id: "current",
+    active: completedWorkoutDays.length > 0,
+    startDate,
+    completedWorkoutDays,
+    restDaysUsed: Math.min(2, restDaysUsed)
+  };
+}
+
 /* -----------------------------
    Main
 ----------------------------- */
@@ -962,6 +1141,186 @@ async function main() {
       renderCharts(series);
       enableQuickTrackUI(true);
       wireBMI();
+    };
+  }
+
+  const btnDownloadBackup = elOpt("btnDownloadBackup");
+  if (btnDownloadBackup) {
+    btnDownloadBackup.onclick = async () => {
+      try {
+        const sessions = await listAllSessions(db);
+        const setLogs = await listAllSetLogs(db);
+        const metrics = await listAllMetrics(db);
+        const weekState = await getWeekState(db);
+
+        const backup = {
+          schemaVersion: 1,
+          exportedAt: new Date().toISOString(),
+          sessions,
+          setLogs,
+          metrics,
+          weekState: weekState || null
+        };
+
+        const filename = `fitplan_backup_${isoDateLocal(new Date())}.json`;
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+        downloadBlob(filename, blob);
+      } catch (err) {
+        console.error(err);
+        alert("Backup export failed.");
+      }
+    };
+  }
+
+  async function exportSessionsCsv() {
+    const sessions = await listAllSessions(db);
+    const csv = toCSV(sessions, ["id", "date", "type", "dayNumber", "createdAt", "updatedAt"]);
+    downloadBlob("fitplan_sessions.csv", new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  }
+
+  async function exportSetLogsCsv() {
+    const setLogs = await listAllSetLogs(db);
+    const csv = toCSV(setLogs, ["id", "sessionId", "date", "type", "dayNumber", "exerciseName", "setNumber", "reps", "weight", "createdAt"]);
+    downloadBlob("fitplan_setlogs.csv", new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  }
+
+  async function exportMetricsCsv() {
+    const metrics = await listAllMetrics(db);
+    const csv = toCSV(metrics, ["date", "bodyweightLb", "calories", "updatedAt"]);
+    downloadBlob("fitplan_metrics.csv", new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  }
+
+  const btnExportSessionsCsv = elOpt("btnExportSessionsCsv");
+  if (btnExportSessionsCsv) {
+    btnExportSessionsCsv.onclick = async () => {
+      try {
+        await exportSessionsCsv();
+      } catch (err) {
+        console.error(err);
+        alert("Sessions CSV export failed.");
+      }
+    };
+  }
+
+  const btnExportSetLogsCsv = elOpt("btnExportSetLogsCsv");
+  if (btnExportSetLogsCsv) {
+    btnExportSetLogsCsv.onclick = async () => {
+      try {
+        await exportSetLogsCsv();
+      } catch (err) {
+        console.error(err);
+        alert("SetLogs CSV export failed.");
+      }
+    };
+  }
+
+  const btnExportMetricsCsv = elOpt("btnExportMetricsCsv");
+  if (btnExportMetricsCsv) {
+    btnExportMetricsCsv.onclick = async () => {
+      try {
+        await exportMetricsCsv();
+      } catch (err) {
+        console.error(err);
+        alert("Metrics CSV export failed.");
+      }
+    };
+  }
+
+  const btnExportCsvAll = elOpt("btnExportCsvAll");
+  if (btnExportCsvAll) {
+    btnExportCsvAll.onclick = async () => {
+      try {
+        const [sessions, setLogs, metrics] = await Promise.all([
+          listAllSessions(db),
+          listAllSetLogs(db),
+          listAllMetrics(db)
+        ]);
+        downloadBlob("fitplan_sessions.csv", new Blob([toCSV(sessions, ["id", "date", "type", "dayNumber", "createdAt", "updatedAt"])], { type: "text/csv;charset=utf-8" }));
+        downloadBlob("fitplan_setlogs.csv", new Blob([toCSV(setLogs, ["id", "sessionId", "date", "type", "dayNumber", "exerciseName", "setNumber", "reps", "weight", "createdAt"])], { type: "text/csv;charset=utf-8" }));
+        downloadBlob("fitplan_metrics.csv", new Blob([toCSV(metrics, ["date", "bodyweightLb", "calories", "updatedAt"])], { type: "text/csv;charset=utf-8" }));
+      } catch (err) {
+        console.error(err);
+        alert("CSV export failed.");
+      }
+    };
+  }
+
+  const backupFileInput = elOpt("backupFileInput");
+  if (backupFileInput) {
+    backupFileInput.onchange = async (e) => {
+      const file = e?.target?.files?.[0];
+      if (!file) return;
+      try {
+        const rawText = await readFileText(file);
+        let parsed;
+        try {
+          parsed = JSON.parse(rawText);
+        } catch {
+          alert("Invalid backup file (JSON parse failed).");
+          return;
+        }
+
+        if (!parsed || typeof parsed !== "object" || !("schemaVersion" in parsed)) {
+          alert("Invalid backup file (schemaVersion missing).");
+          return;
+        }
+        if (Number(parsed.schemaVersion) !== 1) {
+          alert("Unsupported backup schema version.");
+          return;
+        }
+
+        const checkedSessions = validateSessionRows(parsed.sessions);
+        if (!checkedSessions.ok) {
+          alert(`Invalid backup file: ${checkedSessions.message}`);
+          return;
+        }
+        const checkedSetLogs = validateSetLogRows(parsed.setLogs);
+        if (!checkedSetLogs.ok) {
+          alert(`Invalid backup file: ${checkedSetLogs.message}`);
+          return;
+        }
+        const checkedMetrics = validateMetricRows(parsed.metrics);
+        if (!checkedMetrics.ok) {
+          alert(`Invalid backup file: ${checkedMetrics.message}`);
+          return;
+        }
+        const sessions = checkedSessions.rows;
+        const setLogs = checkedSetLogs.rows;
+        const metrics = checkedMetrics.rows;
+        const sessionIds = new Set(sessions.map((s) => s.id));
+        const orphanSetLog = setLogs.find((row) => !sessionIds.has(row.sessionId));
+        if (orphanSetLog) {
+          alert(`Invalid backup file: setLog.sessionId not found (${orphanSetLog.sessionId}).`);
+          return;
+        }
+
+        await clearAllData(db);
+        await bulkUpsertSessions(db, sessions);
+        await bulkUpsertSetLogs(db, setLogs);
+        await bulkUpsertMetrics(db, metrics);
+
+        const parsedWeekState = sanitizeWeekState(parsed.weekState);
+        const rebuiltWeekState = rebuildWeekStateFromSessions(sessions, todayISO);
+        await setWeekState(db, parsedWeekState || rebuiltWeekState);
+
+        alert(`Restored ${sessions.length} sessions, ${setLogs.length} set logs, ${metrics.length} metrics.`);
+        location.reload();
+      } catch (err) {
+        console.error(err);
+        alert("Restore failed.");
+      } finally {
+        backupFileInput.value = "";
+      }
+    };
+  }
+
+  const btnRestoreBackup = elOpt("btnRestoreBackup");
+  if (btnRestoreBackup && backupFileInput) {
+    btnRestoreBackup.onclick = () => {
+      const ok = confirm("This will replace all app data. Continue?");
+      if (!ok) return;
+      backupFileInput.value = "";
+      backupFileInput.click();
     };
   }
 

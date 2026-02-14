@@ -202,6 +202,21 @@
 
 
         </div>
+
+        <div class="divider" style="margin:14px 0"></div>
+
+        <section class="card" style="padding:12px">
+          <h3 style="margin:0 0 10px">Backup & Export</h3>
+          <div class="actions">
+            <button id="btnDownloadBackup" class="btn secondary" type="button">Download Backup (.json)</button>
+            <button id="btnRestoreBackup" class="btn secondary" type="button">Restore Backup (.json)</button>
+            <button id="btnExportCsvAll" class="btn secondary" type="button">Export All CSV</button>
+            <button id="btnExportSessionsCsv" class="btn secondary" type="button">Sessions CSV</button>
+            <button id="btnExportSetLogsCsv" class="btn secondary" type="button">SetLogs CSV</button>
+            <button id="btnExportMetricsCsv" class="btn secondary" type="button">Metrics CSV</button>
+          </div>
+          <input id="backupFileInput" type="file" accept=".json,application/json" style="display:none" />
+        </section>
       </section>
     </section>
   </main>
