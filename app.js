@@ -25,6 +25,12 @@ import {
 ----------------------------- */
 
 const DOB_ISO = "2002-08-12"; // Aug 12, 2002
+const DEBUG = false;
+
+function debugLog(...args) {
+  if (!DEBUG) return;
+  console.debug("[FitPlan]", ...args);
+}
 
 function calcAgeFromDOB(dobISO, todayISO) {
   const dob = new Date(dobISO + "T00:00:00");
@@ -146,7 +152,7 @@ async function renderStats(db, todayISO) {
   // Streak + workout counts
   const { start: s30, end: e30 } = last30RangeDates();
   const sessions30 = await listSessionsInRange(db, s30, e30);
-  const trackedDatesSet = new Set(sessions30.map((s) => s.date));
+  const trackedDatesSet = trackedDatesFromSessions(sessions30);
   const streak = computeStreak(trackedDatesSet);
 
   const streakNode = elOpt("statStreak");
@@ -330,11 +336,36 @@ function isWeekComplete(ws) {
   return ws.completedWorkoutDays.length === 5 && ws.restDaysUsed === 2;
 }
 
+function normalizeCompletedWorkoutDays(ws) {
+  const raw = Array.isArray(ws?.completedWorkoutDays) ? ws.completedWorkoutDays : [];
+  const nums = raw
+    .map((d) => Number(d))
+    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 5);
+  return Array.from(new Set(nums)).sort((a, b) => a - b);
+}
+
 function computeNextWorkoutDay(ws) {
+  const completed = normalizeCompletedWorkoutDays(ws);
   for (let d = 1; d <= 5; d++) {
-    if (!ws.completedWorkoutDays.includes(d)) return d;
+    if (!completed.includes(d)) return d;
   }
-  return 1;
+  return null;
+}
+
+function safeWorkoutDay(nextDay, ws) {
+  if (Number.isInteger(nextDay) && nextDay >= 1 && nextDay <= 5 && PLAN.days[nextDay]) {
+    return nextDay;
+  }
+  const fallback = computeNextWorkoutDay(ws);
+  return Number.isInteger(fallback) && PLAN.days[fallback] ? fallback : null;
+}
+
+function trackedDatesFromSessions(sessions) {
+  return new Set(
+    sessions
+      .filter((s) => s && (s.type === "WORKOUT" || s.type === "REST"))
+      .map((s) => s.date)
+  );
 }
 
 async function ensureWeekState(db) {
@@ -524,7 +555,7 @@ async function persistSetLogsWeightsOnly(db, session) {
 async function renderStreakOnly(db) {
   const { start, end } = last30RangeDates();
   const sessions = await listSessionsInRange(db, start, end);
-  const trackedDatesSet = new Set(sessions.map((s) => s.date));
+  const trackedDatesSet = trackedDatesFromSessions(sessions);
   const streak = computeStreak(trackedDatesSet);
 
   el("streakValue").textContent = String(streak);
@@ -593,9 +624,22 @@ function renderLogHeader(ws, todayISO, todaySession, nextDay) {
     return;
   }
 
+  if (isWeekComplete(ws)) {
+    const dayN = daysDiff(ws.startDate, todayISO) + 1;
+    logTitle.textContent = "Week complete";
+    logSub.textContent = `Week Day ${dayN}/7 · You hit 5 workouts + 2 rests.`;
+    return;
+  }
+
   const dayN = daysDiff(ws.startDate, todayISO) + 1;
-  const reps = getTargetReps(nextDay);
-  logTitle.textContent = PLAN.days[nextDay].title;
+  const safeDay = safeWorkoutDay(nextDay, ws);
+  if (!safeDay) {
+    logTitle.textContent = "All workouts completed";
+    logSub.textContent = `Week Day ${dayN}/7 · Use remaining day(s) for rest.`;
+    return;
+  }
+  const reps = getTargetReps(safeDay);
+  logTitle.textContent = PLAN.days[safeDay].title;
   logSub.textContent = `Week Day ${dayN}/7 · Workouts ${ws.completedWorkoutDays.length}/5 · Rest ${ws.restDaysUsed}/2 · Target reps: ${reps}`;
 }
 
@@ -889,9 +933,20 @@ async function main() {
   // weekly state
   let ws = await ensureWeekState(db);
   ws = await maybeExpireWeek(db, ws, todayISO);
+  ws.completedWorkoutDays = normalizeCompletedWorkoutDays(ws);
+  await setWeekState(db, ws);
 
   // today session
   const todaySession = await getSessionByDate(db, todayISO);
+  const dayN = ws.active ? daysDiff(ws.startDate, todayISO) + 1 : null;
+  debugLog("main:init", {
+    startDate: ws.startDate,
+    todayISO,
+    dayN,
+    completedWorkoutDays: ws.completedWorkoutDays,
+    restDaysUsed: ws.restDaysUsed,
+    todaySessionType: todaySession?.type || null
+  });
 
   el("todayBadge").textContent = `Today: ${todayISO}`;
   el("statusBadge").textContent = todaySession ? "Status: Logged" : "Status: Not logged";
@@ -919,15 +974,39 @@ async function main() {
 
   // determine next workout day
   const nextDay = ws.active ? computeNextWorkoutDay(ws) : 1;
+  const safeNextDay = safeWorkoutDay(nextDay, ws);
+  debugLog("main:nextDay", {
+    startDate: ws.startDate,
+    todayISO,
+    dayN,
+    completedWorkoutDays: ws.completedWorkoutDays,
+    restDaysUsed: ws.restDaysUsed,
+    nextDay,
+    safeNextDay,
+    todaySessionType: todaySession?.type || null
+  });
   renderLogHeader(ws, todayISO, todaySession, nextDay);
 
 
   // rest button rules
-  btnRest.disabled = !ws.active || ws.restDaysUsed >= 2;
+  btnRest.disabled = !ws.active || isWeekComplete(ws) || ws.restDaysUsed >= 2;
+
+  if (ws.active && isWeekComplete(ws)) {
+    btnRest.disabled = true;
+    btnFinish.disabled = true;
+    listEl.innerHTML = "";
+    await renderRecent(db);
+    goScreen("screenHome");
+    return;
+  }
 
   btnRest.onclick = async () => {
     if (!ws.active) {
       alert("You cannot rest before Day 1 starts the week.");
+      return;
+    }
+    if (isWeekComplete(ws)) {
+      alert("Week complete. No more logs can be added.");
       return;
     }
     if (ws.restDaysUsed >= 2) {
@@ -947,6 +1026,15 @@ async function main() {
 
     ws.restDaysUsed += 1;
     await setWeekState(db, ws);
+    debugLog("log:rest", {
+      startDate: ws.startDate,
+      todayISO,
+      dayN: daysDiff(ws.startDate, todayISO) + 1,
+      completedWorkoutDays: ws.completedWorkoutDays,
+      restDaysUsed: ws.restDaysUsed,
+      nextDay: computeNextWorkoutDay(ws),
+      todaySessionType: session.type
+    });
 
     el("statusBadge").textContent = "Status: Logged";
     btnRest.disabled = true;
@@ -961,13 +1049,19 @@ async function main() {
   };
 
   // build exercises
-  const dayPlan = PLAN.days[nextDay];
-  for (const ex of dayPlan.exercises) {
-    listEl.appendChild(buildExerciseCard(ex, nextDay));
+  const dayPlan = safeNextDay ? PLAN.days[safeNextDay] : null;
+  if (dayPlan) {
+    for (const ex of dayPlan.exercises) {
+      listEl.appendChild(buildExerciseCard(ex, safeNextDay));
+    }
   }
 
   // finish enabled only when weights filled
   function syncFinishEnabled() {
+    if (!dayPlan) {
+      btnFinish.disabled = true;
+      return;
+    }
     btnFinish.disabled = !allWorkoutWeightsFilled();
   }
 
@@ -975,8 +1069,10 @@ async function main() {
   syncFinishEnabled();
 
   // AUTO-FILL LAST TIME'S WEIGHTS
-  const didFill = await autofillWeightsForDay(db, nextDay, dayPlan, todayISO);
-  if (didFill) syncFinishEnabled();
+  if (dayPlan) {
+    const didFill = await autofillWeightsForDay(db, safeNextDay, dayPlan, todayISO);
+    if (didFill) syncFinishEnabled();
+  }
 
   // live validation
   listEl.addEventListener("input", (e) => {
@@ -987,7 +1083,16 @@ async function main() {
   });
 
   btnFinish.onclick = async () => {
-    const dayToSave = ws.active ? nextDay : 1;
+    if (isWeekComplete(ws)) {
+      alert("Week complete. No more logs can be added.");
+      return;
+    }
+    if (!dayPlan) {
+      alert("All workout days are already completed this week.");
+      return;
+    }
+
+    const dayToSave = ws.active ? safeNextDay : 1;
 
     if (ws.active && ws.completedWorkoutDays.includes(dayToSave)) {
       alert(`Day ${dayToSave} already completed this week.`);
@@ -1031,6 +1136,15 @@ async function main() {
         alert(`Workout saved. Remaining: Workouts ${5 - ws.completedWorkoutDays.length}, Rest ${2 - ws.restDaysUsed}.`);
       }
     }
+    debugLog("log:workout", {
+      startDate: ws.startDate,
+      todayISO,
+      dayN: daysDiff(ws.startDate, todayISO) + 1,
+      completedWorkoutDays: ws.completedWorkoutDays,
+      restDaysUsed: ws.restDaysUsed,
+      nextDay: computeNextWorkoutDay(ws),
+      todaySessionType: session.type
+    });
 
     el("statusBadge").textContent = "Status: Logged";
     btnRest.disabled = true;
