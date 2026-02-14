@@ -559,6 +559,107 @@ async function persistSetLogsWeightsOnly(db, session) {
   }
 }
 
+function wizardKey(exerciseName, setNumber) {
+  return `${exerciseName}__${setNumber}`;
+}
+
+function createWizardState(dayNumber) {
+  return {
+    dayNumber,
+    exIndex: 0,
+    setIndex: 1,
+    draft: new Map(),
+    autofillCache: new Map()
+  };
+}
+
+function getCurrentExercise(dayPlan, wizard) {
+  return dayPlan?.exercises?.[wizard.exIndex] || null;
+}
+
+function getTotalSetsForExercise(exercise) {
+  return Number(exercise?.sets || 0);
+}
+
+function nextStep(wizard, dayPlan) {
+  const ex = getCurrentExercise(dayPlan, wizard);
+  if (!ex) return false;
+  if (wizard.setIndex < getTotalSetsForExercise(ex)) {
+    wizard.setIndex += 1;
+    return true;
+  }
+  if (wizard.exIndex < dayPlan.exercises.length - 1) {
+    wizard.exIndex += 1;
+    wizard.setIndex = 1;
+    return true;
+  }
+  return false;
+}
+
+function prevStep(wizard, dayPlan) {
+  const ex = getCurrentExercise(dayPlan, wizard);
+  if (!ex) return false;
+  if (wizard.setIndex > 1) {
+    wizard.setIndex -= 1;
+    return true;
+  }
+  if (wizard.exIndex > 0) {
+    wizard.exIndex -= 1;
+    const prevEx = getCurrentExercise(dayPlan, wizard);
+    wizard.setIndex = getTotalSetsForExercise(prevEx);
+    return true;
+  }
+  return false;
+}
+
+function isLastStep(wizard, dayPlan) {
+  const ex = getCurrentExercise(dayPlan, wizard);
+  if (!ex) return false;
+  return (
+    wizard.exIndex === dayPlan.exercises.length - 1 &&
+    wizard.setIndex === getTotalSetsForExercise(ex)
+  );
+}
+
+function findFirstMissingWizardStep(wizard, dayPlan) {
+  for (let exIndex = 0; exIndex < dayPlan.exercises.length; exIndex++) {
+    const ex = dayPlan.exercises[exIndex];
+    for (let setIndex = 1; setIndex <= getTotalSetsForExercise(ex); setIndex++) {
+      const key = wizardKey(ex.name, setIndex);
+      const weight = Number(wizard.draft.get(key) || 0);
+      if (!Number.isFinite(weight) || weight <= 0) {
+        return { exIndex, setIndex };
+      }
+    }
+  }
+  return null;
+}
+
+async function persistWizardDraftSetLogs(db, session, wizard, dayPlan) {
+  const reps = getTargetReps(session.dayNumber);
+  for (const ex of dayPlan.exercises) {
+    for (let setNumber = 1; setNumber <= getTotalSetsForExercise(ex); setNumber++) {
+      const key = wizardKey(ex.name, setNumber);
+      const weight = Number(wizard.draft.get(key) || 0);
+      if (!Number.isFinite(weight) || weight <= 0) {
+        throw new Error(`Missing weight for ${ex.name} set ${setNumber}`);
+      }
+      await addSetLog(db, {
+        id: uid("set"),
+        sessionId: session.id,
+        date: session.date,
+        type: "WORKOUT",
+        dayNumber: session.dayNumber,
+        exerciseName: ex.name,
+        setNumber,
+        reps,
+        weight,
+        createdAt: Date.now()
+      });
+    }
+  }
+}
+
 /* -----------------------------
    Rendering (Home / Log / History)
 ----------------------------- */
@@ -647,6 +748,40 @@ function renderHome(ws, todayISO, todaySession, onLogRest) {
     if (!onLogRest || btnRest.disabled) return;
     await onLogRest();
   };
+}
+
+async function renderWizardStep(db, wizard, dayPlan, todayISO) {
+  const ex = getCurrentExercise(dayPlan, wizard);
+  if (!ex) return;
+
+  const nameNode = elOpt("wizardExerciseName");
+  const progressNode = elOpt("wizardSetProgress");
+  const targetNode = elOpt("wizardTargetReps");
+  const weightInput = elOpt("wizardWeight");
+  const backBtn = elOpt("btnWizardBack");
+  const doneBtn = elOpt("btnWizardDone");
+
+  if (nameNode) nameNode.textContent = ex.name;
+  if (progressNode) progressNode.textContent = `Set ${wizard.setIndex} of ${getTotalSetsForExercise(ex)}`;
+  if (targetNode) targetNode.textContent = `Target: ${getTargetReps(wizard.dayNumber)} reps`;
+
+  if (backBtn) backBtn.disabled = wizard.exIndex === 0 && wizard.setIndex === 1;
+  if (doneBtn) doneBtn.textContent = isLastStep(wizard, dayPlan) ? "Finish Workout" : "Done";
+
+  if (!weightInput) return;
+  const key = wizardKey(ex.name, wizard.setIndex);
+  if (wizard.draft.has(key)) {
+    weightInput.value = String(wizard.draft.get(key));
+    return;
+  }
+
+  if (!wizard.autofillCache.has(ex.name)) {
+    const map = await getLatestWeightsForExercise(db, wizard.dayNumber, ex.name, todayISO);
+    wizard.autofillCache.set(ex.name, map);
+  }
+  const autoMap = wizard.autofillCache.get(ex.name);
+  const autoWeight = Number(autoMap?.get(wizard.setIndex) || 0);
+  weightInput.value = autoWeight > 0 ? String(autoWeight) : "";
 }
 
 function renderLogHeader(ws, todayISO, todaySession, nextDay) {
@@ -1110,7 +1245,10 @@ async function main() {
     wireBMI();
   };
 
-  el("btnLogBackHome").onclick = () => goScreen("screenHome");
+  el("btnLogBackHome").onclick = () => {
+    closeRestOverlay(false);
+    goScreen("screenHome");
+  };
 
   el("btnSummaryDone").onclick = () => {
     hide("summaryCard");
@@ -1349,8 +1487,86 @@ async function main() {
   const listEl = el("exerciseList");
   const btnRest = el("btnMarkRest");
   const btnFinish = el("btnFinishDay");
+  const wizardCard = elOpt("wizardCard");
+  const wizardWeight = elOpt("wizardWeight");
+  const btnWizardBack = elOpt("btnWizardBack");
+  const btnWizardDone = elOpt("btnWizardDone");
+  const restOverlay = elOpt("restTimerOverlay");
+  const restTitle = elOpt("restTimerTitle");
+  const restCountdown = elOpt("restTimerCountdown");
+  const btnRestStart = elOpt("btnRestStart");
+  const btnRestSkip = elOpt("btnRestSkip");
+  const btnRestPlus30 = elOpt("btnRestPlus30");
+  const btnRestMinus30 = elOpt("btnRestMinus30");
 
   listEl.innerHTML = "";
+  if (btnFinish) btnFinish.style.display = "none";
+
+  let restIntervalId = null;
+  let restSeconds = 0;
+  let restDoneCb = null;
+
+  function clearRestTimerInterval() {
+    if (restIntervalId) {
+      clearInterval(restIntervalId);
+      restIntervalId = null;
+    }
+  }
+
+  function formatTimer(sec) {
+    const s = Math.max(0, Number(sec) || 0);
+    const mm = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  }
+
+  function closeRestOverlay(runDone = false) {
+    clearRestTimerInterval();
+    if (restOverlay) restOverlay.style.display = "none";
+    if (runDone && typeof restDoneCb === "function") {
+      const cb = restDoneCb;
+      restDoneCb = null;
+      cb();
+      return;
+    }
+    restDoneCb = null;
+  }
+
+  function openRestOverlay(seconds, title, onDone) {
+    restSeconds = Math.max(0, Number(seconds) || 0);
+    restDoneCb = onDone;
+    if (restTitle) restTitle.textContent = title;
+    if (restCountdown) restCountdown.textContent = formatTimer(restSeconds);
+    if (restOverlay) restOverlay.style.display = "flex";
+    clearRestTimerInterval();
+  }
+
+  if (btnRestStart) {
+    btnRestStart.onclick = () => {
+      clearRestTimerInterval();
+      restIntervalId = setInterval(() => {
+        restSeconds = Math.max(0, restSeconds - 1);
+        if (restCountdown) restCountdown.textContent = formatTimer(restSeconds);
+        if (restSeconds <= 0) {
+          closeRestOverlay(true);
+        }
+      }, 1000);
+    };
+  }
+  if (btnRestSkip) btnRestSkip.onclick = () => closeRestOverlay(true);
+  if (btnRestPlus30) {
+    btnRestPlus30.onclick = () => {
+      restSeconds += 30;
+      if (restCountdown) restCountdown.textContent = formatTimer(restSeconds);
+    };
+  }
+  if (btnRestMinus30) {
+    btnRestMinus30.onclick = () => {
+      restSeconds = Math.max(0, restSeconds - 30);
+      if (restCountdown) restCountdown.textContent = formatTimer(restSeconds);
+      if (restSeconds === 0) closeRestOverlay(true);
+    };
+  }
 
   async function logRestToday() {
     if (!ws.active) {
@@ -1396,7 +1612,10 @@ async function main() {
 
     el("statusBadge").textContent = "Status: Logged";
     btnRest.disabled = true;
-    btnFinish.disabled = true;
+    if (btnFinish) btnFinish.disabled = true;
+    if (btnWizardBack) btnWizardBack.disabled = true;
+    if (btnWizardDone) btnWizardDone.disabled = true;
+    closeRestOverlay(false);
 
     alert("Rest logged. Today is finished.");
 
@@ -1414,7 +1633,10 @@ async function main() {
   // If already tracked today -> lock log screen actions
   if (todaySession) {
     btnRest.disabled = true;
-    btnFinish.disabled = true;
+    if (btnFinish) btnFinish.disabled = true;
+    if (btnWizardBack) btnWizardBack.disabled = true;
+    if (btnWizardDone) btnWizardDone.disabled = true;
+    if (wizardWeight) wizardWeight.disabled = true;
     renderLogHeader(ws, todayISO, todaySession, 1);
     goScreen("screenHome");
     await renderRecent(db);
@@ -1442,8 +1664,12 @@ async function main() {
 
   if (ws.active && isWeekComplete(ws)) {
     btnRest.disabled = true;
-    btnFinish.disabled = true;
+    if (btnFinish) btnFinish.disabled = true;
+    if (btnWizardBack) btnWizardBack.disabled = true;
+    if (btnWizardDone) btnWizardDone.disabled = true;
+    if (wizardWeight) wizardWeight.disabled = true;
     listEl.innerHTML = "";
+    if (wizardCard) wizardCard.style.display = "none";
     await renderRecent(db);
     goScreen("screenHome");
     return;
@@ -1453,47 +1679,25 @@ async function main() {
     await logRestToday();
   };
 
-  // build exercises
   const dayPlan = safeNextDay ? PLAN.days[safeNextDay] : null;
-  if (dayPlan) {
-    for (const ex of dayPlan.exercises) {
-      listEl.appendChild(buildExerciseCard(ex, safeNextDay));
-    }
-  }
+  const wizard = dayPlan ? createWizardState(safeNextDay) : null;
 
-  // finish enabled only when weights filled
-  function syncFinishEnabled() {
-    if (!dayPlan) {
-      btnFinish.disabled = true;
-      return;
-    }
-    btnFinish.disabled = !allWorkoutWeightsFilled();
-  }
-
-  // initial state (after inputs exist)
-  syncFinishEnabled();
-
-  // AUTO-FILL LAST TIME'S WEIGHTS
-  if (dayPlan) {
-    const didFill = await autofillWeightsForDay(db, safeNextDay, dayPlan, todayISO);
-    if (didFill) syncFinishEnabled();
-  }
-
-  // live validation
-  listEl.addEventListener("input", (e) => {
-    const t = e.target;
-    if (t && t.matches && t.matches("input[data-field='weight']")) {
-      syncFinishEnabled();
-    }
-  });
-
-  btnFinish.onclick = async () => {
+  async function finishWizardWorkout() {
     if (isWeekComplete(ws)) {
       alert("Week complete. No more logs can be added.");
       return;
     }
-    if (!dayPlan) {
+    if (!dayPlan || !wizard) {
       alert("All workout days are already completed this week.");
+      return;
+    }
+
+    const missing = findFirstMissingWizardStep(wizard, dayPlan);
+    if (missing) {
+      wizard.exIndex = missing.exIndex;
+      wizard.setIndex = missing.setIndex;
+      await renderWizardStep(db, wizard, dayPlan, todayISO);
+      alert("Please enter a weight for every set before finishing.");
       return;
     }
 
@@ -1501,11 +1705,6 @@ async function main() {
 
     if (ws.active && ws.completedWorkoutDays.includes(dayToSave)) {
       alert(`Day ${dayToSave} already completed this week.`);
-      return;
-    }
-
-    if (!allWorkoutWeightsFilled()) {
-      alert("Enter weights for all sets before finishing.");
       return;
     }
 
@@ -1520,7 +1719,7 @@ async function main() {
     await upsertSession(db, session);
 
     await deleteSetLogsForSession(db, session.id);
-    await persistSetLogsWeightsOnly(db, session);
+    await persistWizardDraftSetLogs(db, session, wizard, dayPlan);
 
     if (!ws.active) {
       // start week now
@@ -1553,7 +1752,11 @@ async function main() {
 
     el("statusBadge").textContent = "Status: Logged";
     btnRest.disabled = true;
-    btnFinish.disabled = true;
+    if (btnFinish) btnFinish.disabled = true;
+    if (btnWizardBack) btnWizardBack.disabled = true;
+    if (btnWizardDone) btnWizardDone.disabled = true;
+    if (wizardWeight) wizardWeight.disabled = true;
+    closeRestOverlay(false);
 
     await renderStreakOnly(db);
     await renderRecent(db);
@@ -1563,7 +1766,67 @@ async function main() {
     renderHome(ws, todayISO, todaySession, logRestToday);
 
     goScreen("screenHome");
-  };
+  }
+
+  async function advanceWizardAfterRest() {
+    if (!wizard || !dayPlan) return;
+    const moved = nextStep(wizard, dayPlan);
+    if (!moved) {
+      await finishWizardWorkout();
+      return;
+    }
+    await renderWizardStep(db, wizard, dayPlan, todayISO);
+    if (wizardWeight) wizardWeight.focus();
+  }
+
+  if (!dayPlan || !wizard) {
+    if (wizardCard) wizardCard.style.display = "none";
+    if (btnWizardBack) btnWizardBack.disabled = true;
+    if (btnWizardDone) btnWizardDone.disabled = true;
+    if (wizardWeight) wizardWeight.disabled = true;
+  } else {
+    if (wizardCard) wizardCard.style.display = "";
+    if (wizardWeight) wizardWeight.disabled = false;
+    await renderWizardStep(db, wizard, dayPlan, todayISO);
+    if (wizardWeight) wizardWeight.focus();
+
+    if (btnWizardBack) {
+      btnWizardBack.onclick = async () => {
+        if (!prevStep(wizard, dayPlan)) return;
+        await renderWizardStep(db, wizard, dayPlan, todayISO);
+        if (wizardWeight) wizardWeight.focus();
+      };
+    }
+
+    if (btnWizardDone) {
+      btnWizardDone.onclick = async () => {
+        const ex = getCurrentExercise(dayPlan, wizard);
+        if (!ex || !wizardWeight) return;
+
+        const weight = Number(wizardWeight.value);
+        if (!Number.isFinite(weight) || weight <= 0) {
+          alert("Enter a valid weight greater than 0.");
+          return;
+        }
+
+        wizard.draft.set(wizardKey(ex.name, wizard.setIndex), weight);
+
+        if (isLastStep(wizard, dayPlan)) {
+          await finishWizardWorkout();
+          return;
+        }
+
+        const dayType = getDayType(wizard.dayNumber);
+        const suggested = dayType === "HEAVY" ? 150 : 90;
+        openRestOverlay(suggested, `Rest ${suggested}s`, () => {
+          advanceWizardAfterRest().catch((err) => {
+            console.error(err);
+            alert("Failed to advance wizard.");
+          });
+        });
+      };
+    }
+  }
 
   // default route
   goScreen("screenHome");

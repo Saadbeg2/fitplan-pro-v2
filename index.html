@@ -57,11 +57,22 @@
           <button id="btnLogBackHome" class="btn tiny secondary" type="button">Home</button>
         </div>
 
-        <div id="exerciseList" class="exerciseList"></div>
+        <div id="wizardCard" class="wizardCard">
+          <div class="wizardExerciseName" id="wizardExerciseName">—</div>
+          <div class="wizardSetProgress" id="wizardSetProgress">Set — of —</div>
+          <div class="wizardTarget" id="wizardTargetReps">Target: — reps</div>
+          <input class="input wizardWeightInput" id="wizardWeight" type="number" min="0" step="0.5" placeholder="Weight" />
+          <div class="wizardActions">
+            <button id="btnWizardBack" class="btn secondary" type="button">Back</button>
+            <button id="btnWizardDone" class="btn primary" type="button">Done</button>
+          </div>
+        </div>
+
+        <div id="exerciseList" class="exerciseList" style="display:none"></div>
 
         <div class="actions">
           <button id="btnMarkRest" class="btn secondary">Log Rest</button>
-          <button id="btnFinishDay" class="btn primary">Finish Workout</button>
+          <button id="btnFinishDay" class="btn primary" style="display:none">Finish Workout</button>
         </div>
       </section>
 
@@ -74,6 +85,21 @@
           <button id="btnSummaryDone" class="btn primary">Return Home</button>
         </div>
       </section>
+
+      <div id="restTimerOverlay" class="restOverlay" style="display:none">
+        <div class="restOverlayCard">
+          <div class="restOverlayTitle" id="restTimerTitle">Rest</div>
+          <div class="restOverlayCountdown" id="restTimerCountdown">00:00</div>
+          <div class="restOverlayActions">
+            <button id="btnRestStart" class="btn primary" type="button">Start</button>
+            <button id="btnRestSkip" class="btn secondary" type="button">Skip</button>
+          </div>
+          <div class="restOverlayActions">
+            <button id="btnRestMinus30" class="btn secondary" type="button">-30s</button>
+            <button id="btnRestPlus30" class="btn secondary" type="button">+30s</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- =========================

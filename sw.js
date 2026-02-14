@@ -1,4 +1,4 @@
-const CACHE_NAME = "fitplan-pro-v2-cache-v2-8";
+const CACHE_NAME = "fitplan-pro-v2-cache-v2-9";
 const BASE = self.registration.scope;
 
 const ASSETS = [
