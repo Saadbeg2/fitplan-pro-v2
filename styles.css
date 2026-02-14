@@ -174,36 +174,43 @@
   .input:focus{ border-color:#3a3a44; }
   .input:disabled{ opacity:.55; }
   
-  /* ---------- HOME (Simplified) ---------- */
+  /* ---------- Home ---------- */
   .homeStack{
     display:grid;
-    gap:12px;
+    gap:10px;
   }
-  
-  .homeLabel{
-    font-size:12px;
-    color:var(--muted);
-    margin-bottom:6px;
-  }
-  
-  .homeStreak{
-    font-size:44px;
-    font-weight:900;
-    letter-spacing:-0.5px;
-    line-height:1;
-  }
-  
-  .homeWeek{
+
+  .homeTodayBlock{
     border:1px solid var(--line);
     background:#0f0f12;
     border-radius:var(--radius2);
     padding:12px;
   }
-  
-  .homeWeekTitle{
+
+  .homeTodayTitle{
     font-weight:900;
     letter-spacing:.2px;
     font-size:16px;
+  }
+
+  .homePill{
+    width:100%;
+    border-radius:999px;
+  }
+
+  .homePillPrimary{
+    min-height:58px;
+    font-size:16px;
+  }
+
+  .homePillSecondary{
+    min-height:46px;
+    font-size:14px;
+  }
+
+  #homeHelper{
+    min-height:16px;
+    margin-top:2px;
   }
   
   /* ---------- Exercise List ---------- */

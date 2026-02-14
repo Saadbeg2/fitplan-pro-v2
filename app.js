@@ -299,10 +299,14 @@ function computeStreak(trackedDatesSet) {
 function animateStreakIfImproved(newStreak) {
   const key = "fitplan_last_streak";
   const prev = Number(localStorage.getItem(key) || "0");
+  const node = elOpt("streakValue");
+  if (!node) {
+    localStorage.setItem(key, String(newStreak));
+    return;
+  }
 
   // Only celebrate increases (not first load, not same, not decrease)
   if (prev > 0 && newStreak > prev) {
-    const node = el("streakValue");
     node.classList.remove("streak-animate"); // reset if rapid
     // force reflow so animation restarts reliably
     void node.offsetWidth;
@@ -558,7 +562,8 @@ async function renderStreakOnly(db) {
   const trackedDatesSet = trackedDatesFromSessions(sessions);
   const streak = computeStreak(trackedDatesSet);
 
-  el("streakValue").textContent = String(streak);
+  const streakNode = elOpt("streakValue");
+  if (streakNode) streakNode.textContent = String(streak);
   animateStreakIfImproved(streak);
 
   // small hint under streak
@@ -570,7 +575,7 @@ async function renderStreakOnly(db) {
   }
 }
 
-function renderHome(ws, todayISO, todaySession) {
+function renderHome(ws, todayISO, todaySession, onLogRest) {
   // header sub
   const headerSub = elOpt("headerSub");
   if (headerSub) {
@@ -581,30 +586,60 @@ function renderHome(ws, todayISO, todaySession) {
     }
   }
 
-  // week block title/subtitle
-  const homeTitle = el("homeTitle");
-  const homeSubtitle = el("homeSubtitle");
+  const homeTitle = el("homeTodayTitle");
+  const homeSubtitle = el("homeTodaySubtitle");
+  const homeHelper = elOpt("homeHelper");
+  const btnWorkout = el("btnHomeLogWorkout");
+  const btnRest = el("btnHomeLogRest");
+
+  const nextDay = ws.active ? computeNextWorkoutDay(ws) : 1;
+  const safeDay = ws.active ? safeWorkoutDay(nextDay, ws) : 1;
+  const restLeft = Math.max(0, 2 - ws.restDaysUsed);
+
+  homeTitle.textContent = "Today's workout";
+  homeSubtitle.textContent = ws.active && safeDay ? PLAN.days[safeDay].title : PLAN.days[1].title;
+  if (homeHelper) homeHelper.textContent = "";
 
   if (todaySession) {
-    homeTitle.textContent = "Today is already logged";
-    homeSubtitle.textContent = "Come back tomorrow. No double-logging.";
+    homeTitle.textContent = "Already logged today";
+    homeSubtitle.textContent = "Come back tomorrow.";
+    if (homeHelper) homeHelper.textContent = "Only one log per day.";
   } else if (!ws.active) {
-    homeTitle.textContent = "Start the week";
-    homeSubtitle.textContent = "Day 1 must be logged first. No resting before Day 1.";
-  } else {
-    const dayN = daysDiff(ws.startDate, todayISO) + 1;
-    const daysLeftAfterToday = Math.max(0, 7 - dayN);
-    homeTitle.textContent = isWeekComplete(ws) ? "Week complete" : "Week in progress";
-    homeSubtitle.textContent =
-      isWeekComplete(ws)
-        ? "You hit 5 workouts + 2 rests. Run it again."
-        : `Day ${dayN}/7 · ${daysLeftAfterToday} day(s) left after today.`;
+    homeTitle.textContent = "Today's workout";
+    homeSubtitle.textContent = PLAN.days[1].title;
+    if (homeHelper) homeHelper.textContent = "Week starts when Day 1 workout is logged.";
+  } else if (isWeekComplete(ws)) {
+    homeTitle.textContent = "Week complete";
+    homeSubtitle.textContent = "Start a new week tomorrow.";
+    if (homeHelper) homeHelper.textContent = "You completed 5 workouts and 2 rest days.";
+  } else if (!safeDay) {
+    homeTitle.textContent = "Today's workout";
+    homeSubtitle.textContent = "All workouts complete for this week.";
+    if (homeHelper) homeHelper.textContent = "Use remaining day(s) for rest.";
   }
 
-  // Log today button
-  const btn = el("btnHomeLogWorkout");
-  btn.disabled = !!todaySession;
-  btn.onclick = () => goScreen("screenLog");
+  btnWorkout.textContent = "Log workout";
+  btnWorkout.disabled = !!todaySession || isWeekComplete(ws) || (ws.active && !safeDay);
+  btnWorkout.onclick = () => goScreen("screenLog");
+
+  if (!ws.active) {
+    btnRest.textContent = "Log rest (locked until Day 1)";
+    btnRest.disabled = true;
+  } else if (isWeekComplete(ws)) {
+    btnRest.textContent = "Log rest (0 left)";
+    btnRest.disabled = true;
+  } else if (ws.restDaysUsed >= 2) {
+    btnRest.textContent = "Log rest (0 left)";
+    btnRest.disabled = true;
+  } else {
+    btnRest.textContent = `Log rest (${restLeft} rest day(s) left)`;
+    btnRest.disabled = !!todaySession;
+  }
+
+  btnRest.onclick = async () => {
+    if (!onLogRest || btnRest.disabled) return;
+    await onLogRest();
+  };
 }
 
 function renderLogHeader(ws, todayISO, todaySession, nextDay) {
@@ -937,7 +972,7 @@ async function main() {
   await setWeekState(db, ws);
 
   // today session
-  const todaySession = await getSessionByDate(db, todayISO);
+  let todaySession = await getSessionByDate(db, todayISO);
   const dayN = ws.active ? daysDiff(ws.startDate, todayISO) + 1 : null;
   debugLog("main:init", {
     startDate: ws.startDate,
@@ -951,16 +986,71 @@ async function main() {
   el("todayBadge").textContent = `Today: ${todayISO}`;
   el("statusBadge").textContent = todaySession ? "Status: Logged" : "Status: Not logged";
 
-  // HOME
-  renderHome(ws, todayISO, todaySession);
-  await renderStreakOnly(db);
-
   // LOG setup
   const listEl = el("exerciseList");
   const btnRest = el("btnMarkRest");
   const btnFinish = el("btnFinishDay");
 
   listEl.innerHTML = "";
+
+  async function logRestToday() {
+    if (!ws.active) {
+      alert("You cannot rest before Day 1 starts the week.");
+      return false;
+    }
+    if (isWeekComplete(ws)) {
+      alert("Week complete. No more logs can be added.");
+      return false;
+    }
+    if (ws.restDaysUsed >= 2) {
+      alert("Rest limit reached (2/2).");
+      return false;
+    }
+    if (todaySession) {
+      alert("Today is already logged.");
+      return false;
+    }
+
+    const session = {
+      id: uid("session"),
+      date: todayISO,
+      type: "REST",
+      dayNumber: 0,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await upsertSession(db, session);
+
+    ws.restDaysUsed += 1;
+    await setWeekState(db, ws);
+    todaySession = session;
+
+    debugLog("log:rest", {
+      startDate: ws.startDate,
+      todayISO,
+      dayN: daysDiff(ws.startDate, todayISO) + 1,
+      completedWorkoutDays: ws.completedWorkoutDays,
+      restDaysUsed: ws.restDaysUsed,
+      nextDay: computeNextWorkoutDay(ws),
+      todaySessionType: session.type
+    });
+
+    el("statusBadge").textContent = "Status: Logged";
+    btnRest.disabled = true;
+    btnFinish.disabled = true;
+
+    alert("Rest logged. Today is finished.");
+
+    await renderStreakOnly(db);
+    await renderRecent(db);
+    renderHome(ws, todayISO, todaySession, logRestToday);
+    goScreen("screenHome");
+    return true;
+  }
+
+  // HOME
+  renderHome(ws, todayISO, todaySession, logRestToday);
+  await renderStreakOnly(db);
 
   // If already tracked today -> lock log screen actions
   if (todaySession) {
@@ -1001,51 +1091,7 @@ async function main() {
   }
 
   btnRest.onclick = async () => {
-    if (!ws.active) {
-      alert("You cannot rest before Day 1 starts the week.");
-      return;
-    }
-    if (isWeekComplete(ws)) {
-      alert("Week complete. No more logs can be added.");
-      return;
-    }
-    if (ws.restDaysUsed >= 2) {
-      alert("Rest limit reached (2/2).");
-      return;
-    }
-
-    const session = {
-      id: uid("session"),
-      date: todayISO,
-      type: "REST",
-      dayNumber: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    await upsertSession(db, session);
-
-    ws.restDaysUsed += 1;
-    await setWeekState(db, ws);
-    debugLog("log:rest", {
-      startDate: ws.startDate,
-      todayISO,
-      dayN: daysDiff(ws.startDate, todayISO) + 1,
-      completedWorkoutDays: ws.completedWorkoutDays,
-      restDaysUsed: ws.restDaysUsed,
-      nextDay: computeNextWorkoutDay(ws),
-      todaySessionType: session.type
-    });
-
-    el("statusBadge").textContent = "Status: Logged";
-    btnRest.disabled = true;
-    btnFinish.disabled = true;
-
-    alert("Rest logged. Today is finished.");
-
-    await renderStreakOnly(db);
-    await renderRecent(db);
-    renderHome(ws, todayISO, session);
-    goScreen("screenHome");
+    await logRestToday();
   };
 
   // build exercises
@@ -1154,7 +1200,8 @@ async function main() {
     await renderRecent(db);
 
     const freshToday = await getSessionByDate(db, todayISO);
-    renderHome(ws, todayISO, freshToday);
+    todaySession = freshToday;
+    renderHome(ws, todayISO, todaySession, logRestToday);
 
     goScreen("screenHome");
   };

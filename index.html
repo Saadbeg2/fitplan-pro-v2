@@ -30,21 +30,16 @@
            HOME (Control Panel)
            ========================= -->
     <section class="screen" id="screenHome">
-      <!-- Single Home Card (Simplified) -->
       <section class="card" id="homePrimaryCard">
         <div class="homeStack">
-          <div>
-            <div class="homeLabel">Current streak</div>
-            <div class="homeStreak" id="streakValue">—</div>
-            <div class="muted small" id="streakHint">—</div>
+          <div class="homeTodayBlock">
+            <div class="homeTodayTitle" id="homeTodayTitle">Today's workout</div>
+            <div class="muted" id="homeTodaySubtitle">—</div>
           </div>
 
-          <div class="homeWeek" id="homeWeekBlock">
-            <div class="homeWeekTitle" id="homeTitle">—</div>
-            <div class="muted" id="homeSubtitle">—</div>
-          </div>
-
-          <button id="btnHomeLogWorkout" class="btn primary">Log today</button>
+          <button id="btnHomeLogWorkout" class="btn homePill homePillPrimary">Log workout</button>
+          <button id="btnHomeLogRest" class="btn homePill homePillSecondary">Log rest (2 rest day(s) left)</button>
+          <div class="muted small" id="homeHelper"></div>
         </div>
       </section>
     </section>
