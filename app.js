@@ -683,7 +683,7 @@ async function renderStreakOnly(db) {
   }
 }
 
-function renderHome(ws, todayISO, todaySession, onLogRest) {
+function renderHome(ws, todayISO, todaySession, onLogRest, onLogWorkout) {
   // header sub
   const headerSub = elOpt("headerSub");
   if (headerSub) {
@@ -728,7 +728,14 @@ function renderHome(ws, todayISO, todaySession, onLogRest) {
 
   btnWorkout.textContent = "Log workout";
   btnWorkout.disabled = !!todaySession || isWeekComplete(ws) || (ws.active && !safeDay);
-  btnWorkout.onclick = () => goScreen("screenLog");
+  btnWorkout.onclick = async () => {
+    if (btnWorkout.disabled) return;
+    if (onLogWorkout) {
+      await onLogWorkout();
+      return;
+    }
+    goScreen("screenLog");
+  };
 
   if (!ws.active) {
     btnRest.textContent = "Log rest (locked until Day 1)";
@@ -1002,6 +1009,65 @@ function readFileText(file) {
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
     reader.readAsText(file);
+  });
+}
+
+async function ensureBodyweightForToday(db, todayISO, onSuccess) {
+  const metric = await getMetricByDate(db, todayISO);
+  const existingBW = Number(metric?.bodyweightLb);
+  if (Number.isFinite(existingBW) && existingBW > 0) {
+    if (onSuccess) await onSuccess();
+    return true;
+  }
+
+  const overlay = elOpt("bwGateOverlay");
+  const input = elOpt("bwGateInput");
+  const btnSave = elOpt("btnBwGateSave");
+  if (!overlay || !input || !btnSave) {
+    alert("Daily check-in is unavailable.");
+    return false;
+  }
+
+  overlay.style.display = "flex";
+  input.value = "";
+  setTimeout(() => input.focus(), 0);
+
+  return new Promise((resolve) => {
+    const attemptSave = async () => {
+      const val = Number(input.value);
+      if (!Number.isFinite(val) || val <= 0) {
+        alert("Enter a valid bodyweight greater than 0.");
+        return;
+      }
+
+      btnSave.disabled = true;
+      try {
+        const prev = (await getMetricByDate(db, todayISO)) || { date: todayISO };
+        await upsertMetric(db, {
+          ...prev,
+          date: todayISO,
+          bodyweightLb: val,
+          updatedAt: Date.now()
+        });
+        overlay.style.display = "none";
+        input.value = "";
+        if (onSuccess) await onSuccess();
+        resolve(true);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to save bodyweight.");
+      } finally {
+        btnSave.disabled = false;
+      }
+    };
+
+    btnSave.onclick = attemptSave;
+    input.onkeydown = (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        attemptSave().catch(() => { });
+      }
+    };
   });
 }
 
@@ -1621,13 +1687,28 @@ async function main() {
 
     await renderStreakOnly(db);
     await renderRecent(db);
-    renderHome(ws, todayISO, todaySession, logRestToday);
+    renderHome(ws, todayISO, todaySession, handleHomeRest, handleHomeWorkout);
     goScreen("screenHome");
     return true;
   }
 
+  async function handleHomeWorkout() {
+    if (todaySession) return;
+    await ensureBodyweightForToday(db, todayISO, async () => {
+      goScreen("screenLog");
+    });
+  }
+
+  async function handleHomeRest() {
+    if (todaySession) return;
+    if (!ws.active || isWeekComplete(ws) || ws.restDaysUsed >= 2) return;
+    await ensureBodyweightForToday(db, todayISO, async () => {
+      await logRestToday();
+    });
+  }
+
   // HOME
-  renderHome(ws, todayISO, todaySession, logRestToday);
+  renderHome(ws, todayISO, todaySession, handleHomeRest, handleHomeWorkout);
   await renderStreakOnly(db);
 
   // If already tracked today -> lock log screen actions
@@ -1763,7 +1844,7 @@ async function main() {
 
     const freshToday = await getSessionByDate(db, todayISO);
     todaySession = freshToday;
-    renderHome(ws, todayISO, todaySession, logRestToday);
+    renderHome(ws, todayISO, todaySession, handleHomeRest, handleHomeWorkout);
 
     goScreen("screenHome");
   }
