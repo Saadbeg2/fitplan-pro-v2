@@ -983,27 +983,6 @@ function renderLogHeader(ws, todayISO, todaySession, nextDay) {
   logSub.textContent = `Week Day ${dayN}/7 · Workouts ${ws.completedWorkoutDays.length}/5 · Rest ${ws.restDaysUsed}/2 · Target reps: ${reps}`;
 }
 
-async function renderRecent(db) {
-  const box = el("recentLogs");
-  const sessions = await listRecentSessions(db, 30);
-  box.innerHTML = "";
-
-  if (sessions.length === 0) {
-    box.innerHTML = `<div class="small">No sessions logged yet.</div>`;
-    return;
-  }
-
-  for (const s of sessions) {
-    const div = document.createElement("div");
-    div.className = "logItem";
-    div.innerHTML = `
-      <div style="font-weight:800">${formatSessionLabel(s)}</div>
-      <div class="small">${s.type === "WORKOUT" ? "Workout day" : "Rest day"} • saved</div>
-    `;
-    box.appendChild(div);
-  }
-}
-
 /* -----------------------------
    History: Charts + BMI + Calories (placeholder-first)
 ----------------------------- */
@@ -2081,7 +2060,6 @@ async function main() {
     alert("Rest logged. Today is finished.");
 
     await renderStreakOnly(db);
-    await renderRecent(db);
     renderHome(ws, todayISO, todaySession, handleHomeRest, handleHomeWorkout);
     goScreen("screenHome");
     return true;
@@ -2115,7 +2093,6 @@ async function main() {
     if (wizardWeight) wizardWeight.disabled = true;
     renderLogHeader(ws, todayISO, todaySession, 1);
     goScreen("screenHome");
-    await renderRecent(db);
     return;
   }
 
@@ -2146,7 +2123,6 @@ async function main() {
     if (wizardWeight) wizardWeight.disabled = true;
     listEl.innerHTML = "";
     if (wizardCard) wizardCard.style.display = "none";
-    await renderRecent(db);
     goScreen("screenHome");
     return;
   }
@@ -2235,7 +2211,6 @@ async function main() {
     closeRestOverlay(false);
 
     await renderStreakOnly(db);
-    await renderRecent(db);
 
     const freshToday = await getSessionByDate(db, todayISO);
     todaySession = freshToday;
@@ -2305,7 +2280,6 @@ async function main() {
 
   // default route
   goScreen("screenHome");
-  await renderRecent(db);
 }
 
 main().catch((e) => {
