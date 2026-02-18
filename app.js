@@ -379,7 +379,7 @@ function hide(id) {
 }
 
 function setActiveNav(activeId) {
-  const ids = ["navHome", "navStats", "navHistory"];
+  const ids = ["navHome", "navStats", "navHistory", "navData"];
   for (const id of ids) {
     const n = elOpt(id);
     if (!n) continue;
@@ -388,7 +388,7 @@ function setActiveNav(activeId) {
 }
 
 function goScreen(name) {
-  const screens = ["screenHome", "screenLog", "screenStats", "screenHistory"];
+  const screens = ["screenHome", "screenLog", "screenStats", "screenHistory", "screenData"];
   for (const s of screens) hide(s);
   show(name);
 
@@ -396,6 +396,7 @@ function goScreen(name) {
   if (name === "screenLog") setActiveNav("navHome");     // optional: keep Home highlighted while logging
   if (name === "screenStats") setActiveNav("navStats");
   if (name === "screenHistory") setActiveNav("navHistory");
+  if (name === "screenData") setActiveNav("navData");
 }
 
 
@@ -1282,6 +1283,44 @@ function readFileText(file) {
   });
 }
 
+function parseCsvLine(line) {
+  const out = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      out.push(cur);
+      cur = "";
+      continue;
+    }
+
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseCsvText(raw) {
+  const lines = String(raw || "")
+    .replace(/\uFEFF/g, "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "");
+  return lines.map(parseCsvLine);
+}
+
 async function ensureBodyweightForToday(db, todayISO, onSuccess) {
   const metric = await getMetricByDate(db, todayISO);
   const existingBW = Number(metric?.bodyweightLb);
@@ -1550,6 +1589,7 @@ async function main() {
     await renderWeightChart(db);
     await renderCalendar(db);
   };
+  el("navData").onclick = () => goScreen("screenData");
 
   el("btnLogBackHome").onclick = () => {
     closeRestOverlay(false);
@@ -1739,6 +1779,145 @@ async function main() {
       if (!ok) return;
       backupFileInput.value = "";
       backupFileInput.click();
+    };
+  }
+
+  const btnDownloadTemplateCsv = elOpt("btnDownloadTemplateCsv");
+  if (btnDownloadTemplateCsv) {
+    btnDownloadTemplateCsv.onclick = () => {
+      const lines = [
+        "date,type,dayNumber,bodyweightLb",
+        "2026-02-18,WORKOUT,1,248",
+        "2026-02-19,REST,0,247.5"
+      ];
+      downloadBlob(
+        "fitplan_template.csv",
+        new Blob([lines.join("\r\n")], { type: "text/csv;charset=utf-8" })
+      );
+    };
+  }
+
+  const templateFileInput = elOpt("templateFileInput");
+  if (templateFileInput) {
+    templateFileInput.onchange = async (e) => {
+      const file = e?.target?.files?.[0];
+      if (!file) return;
+
+      let totalRows = 0;
+      let importedSessions = 0;
+      let skippedExistingSessions = 0;
+      let importedMetrics = 0;
+      let invalidRows = 0;
+
+      try {
+        const rawText = await readFileText(file);
+        const rows = parseCsvText(rawText);
+        if (rows.length === 0) {
+          alert("Template import failed: file is empty.");
+          return;
+        }
+
+        const header = rows[0].map((v) => String(v || "").trim());
+        const expectedHeader = ["date", "type", "dayNumber", "bodyweightLb"];
+        const headerOk =
+          header.length === expectedHeader.length &&
+          header.every((v, i) => v === expectedHeader[i]);
+        if (!headerOk) {
+          alert("Template import failed: invalid header.");
+          return;
+        }
+
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length === 0) continue;
+          totalRows += 1;
+
+          const date = String(row[0] ?? "").trim();
+          const typeRaw = String(row[1] ?? "").trim().toUpperCase();
+          const dayRaw = String(row[2] ?? "").trim();
+          const bwRaw = String(row[3] ?? "").trim();
+
+          if (!isISODate(date)) {
+            invalidRows += 1;
+            continue;
+          }
+          if (typeRaw !== "WORKOUT" && typeRaw !== "REST") {
+            invalidRows += 1;
+            continue;
+          }
+
+          const dayNumber = Number(dayRaw);
+          if (typeRaw === "WORKOUT") {
+            if (!Number.isInteger(dayNumber) || dayNumber < 1 || dayNumber > 5) {
+              invalidRows += 1;
+              continue;
+            }
+          } else {
+            if (dayNumber !== 0) {
+              invalidRows += 1;
+              continue;
+            }
+          }
+
+          let bodyweightLb = null;
+          if (bwRaw !== "") {
+            const parsedBw = Number(bwRaw);
+            if (!Number.isFinite(parsedBw) || parsedBw <= 0) {
+              invalidRows += 1;
+              continue;
+            }
+            bodyweightLb = parsedBw;
+          }
+
+          const existingSession = await getSessionByDate(db, date);
+          if (existingSession) {
+            skippedExistingSessions += 1;
+          } else {
+            await upsertSession(db, {
+              id: uid("session"),
+              date,
+              type: typeRaw,
+              dayNumber,
+              createdAt: Date.now(),
+              updatedAt: Date.now()
+            });
+            importedSessions += 1;
+          }
+
+          if (bodyweightLb !== null) {
+            const prev = (await getMetricByDate(db, date)) || { date };
+            await upsertMetric(db, {
+              ...prev,
+              date,
+              bodyweightLb,
+              updatedAt: Date.now()
+            });
+            importedMetrics += 1;
+          }
+        }
+
+        alert(
+          `Template import complete.\n` +
+          `totalRows: ${totalRows}\n` +
+          `importedSessions: ${importedSessions}\n` +
+          `skippedExistingSessions: ${skippedExistingSessions}\n` +
+          `importedMetrics: ${importedMetrics}\n` +
+          `invalidRows: ${invalidRows}`
+        );
+      } catch (err) {
+        console.error(err);
+        alert("Template import failed.");
+      } finally {
+        templateFileInput.value = "";
+      }
+    };
+  }
+
+  const btnImportTemplateCsv = elOpt("btnImportTemplateCsv");
+  if (btnImportTemplateCsv && templateFileInput) {
+    btnImportTemplateCsv.onclick = () => {
+      templateFileInput.value = "";
+      templateFileInput.click();
     };
   }
 
