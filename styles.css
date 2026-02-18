@@ -553,3 +553,11 @@
 .aboutList li {
   margin: 6px 0;
 }
+
+#screenAbout h3 {
+  margin: 16px 0 6px;
+}
+
+.aboutFooterLine {
+  margin-top: 12px;
+}
