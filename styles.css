@@ -544,3 +544,12 @@
 .calendarToday { outline: 2px solid #facc15; }
 
 .hidden { display:none; }
+
+.aboutList {
+  margin: 10px 0 12px;
+  padding-left: 18px;
+}
+
+.aboutList li {
+  margin: 6px 0;
+}

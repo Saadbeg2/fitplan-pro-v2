@@ -379,7 +379,7 @@ function hide(id) {
 }
 
 function setActiveNav(activeId) {
-  const ids = ["navHome", "navStats", "navHistory", "navData"];
+  const ids = ["navHome", "navStats", "navHistory", "navAbout", "navData"];
   for (const id of ids) {
     const n = elOpt(id);
     if (!n) continue;
@@ -388,7 +388,7 @@ function setActiveNav(activeId) {
 }
 
 function goScreen(name) {
-  const screens = ["screenHome", "screenLog", "screenStats", "screenHistory", "screenData"];
+  const screens = ["screenHome", "screenLog", "screenStats", "screenHistory", "screenAbout", "screenData"];
   for (const s of screens) hide(s);
   show(name);
 
@@ -396,6 +396,7 @@ function goScreen(name) {
   if (name === "screenLog") setActiveNav("navHome");     // optional: keep Home highlighted while logging
   if (name === "screenStats") setActiveNav("navStats");
   if (name === "screenHistory") setActiveNav("navHistory");
+  if (name === "screenAbout") setActiveNav("navAbout");
   if (name === "screenData") setActiveNav("navData");
 }
 
@@ -1589,6 +1590,7 @@ async function main() {
     await renderWeightChart(db);
     await renderCalendar(db);
   };
+  el("navAbout").onclick = () => goScreen("screenAbout");
   el("navData").onclick = () => goScreen("screenData");
 
   el("btnLogBackHome").onclick = () => {
