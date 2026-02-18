@@ -438,6 +438,13 @@
   display:block;
 }
 
+#weightChart{
+  width:100% !important;
+  height:260px !important;
+  display:block;
+  margin-top:10px;
+}
+
 /* optional: label spacing */
 #weightRangeLabel,
 #calRangeLabel{
@@ -475,13 +482,65 @@
   margin-top: 6px;
 }
 
-/* strength rows spacing */
-#screenStats .strengthRow {
-  margin-top: 6px;
+#screenStats .statStrengthGrid {
+  margin-top: 10px;
+  gap: 10px;
 }
 
-/* nutrition + training spacing */
-#screenStats .nutritionRow,
-#screenStats .trainingRow {
-  margin-top: 6px;
+#screenStats .statStrengthCard {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #0f0f12;
+  color: var(--text);
+  border-radius: var(--radius2);
+  padding: 12px;
+  cursor: pointer;
 }
+
+#screenStats .statStrengthCard:focus {
+  outline: none;
+  border-color: #3a3a44;
+}
+
+#screenStats .statStrengthTitle {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+#screenStats .statStrengthMain {
+  margin-top: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#screenStats .statStrengthSub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.calendarDay {
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  background: #1f2937;
+  cursor: pointer;
+  user-select: none;
+}
+
+.calendarWorkout { background: #14532d; }
+.calendarRest { background: #1e3a8a; }
+.calendarEmpty { background: #1f2937; }
+.calendarToday { outline: 2px solid #facc15; }
+
+.hidden { display:none; }

@@ -32,7 +32,80 @@ import {
 ----------------------------- */
 
 const DOB_ISO = "2002-08-12"; // Aug 12, 2002
+const PROFILE_NAME = "Saad Salman Beg";
 const DEBUG = false;
+const DEFAULT_STRENGTH_BW_LB = 248;
+
+const STRENGTH_LEVEL_PERCENTILES = {
+  Beginner: "~5th percentile",
+  Novice: "~25th percentile",
+  Intermediate: "~50th percentile",
+  Advanced: "~75th percentile",
+  Elite: "~95th percentile"
+};
+
+const STRENGTH_STANDARDS = {
+  BENCH_PRESS_STANDARDS: [
+    { bw: 180, beginner: 100, novice: 150, intermediate: 195, advanced: 245, elite: 295 },
+    { bw: 190, beginner: 105, novice: 155, intermediate: 205, advanced: 255, elite: 305 },
+    { bw: 200, beginner: 110, novice: 165, intermediate: 215, advanced: 265, elite: 320 },
+    { bw: 210, beginner: 115, novice: 170, intermediate: 225, advanced: 280, elite: 335 },
+    { bw: 220, beginner: 120, novice: 175, intermediate: 235, advanced: 290, elite: 345 },
+    { bw: 230, beginner: 125, novice: 185, intermediate: 245, advanced: 300, elite: 355 },
+    { bw: 240, beginner: 130, novice: 190, intermediate: 255, advanced: 315, elite: 370 },
+    { bw: 250, beginner: 135, novice: 195, intermediate: 260, advanced: 320, elite: 380 },
+    { bw: 260, beginner: 140, novice: 200, intermediate: 265, advanced: 330, elite: 390 },
+    { bw: 270, beginner: 145, novice: 205, intermediate: 270, advanced: 335, elite: 400 },
+    { bw: 280, beginner: 150, novice: 210, intermediate: 275, advanced: 340, elite: 405 },
+    { bw: 290, beginner: 155, novice: 215, intermediate: 280, advanced: 345, elite: 410 },
+    { bw: 300, beginner: 160, novice: 220, intermediate: 285, advanced: 350, elite: 420 }
+  ],
+  SQUAT_STANDARDS: [
+    { bw: 180, beginner: 140, novice: 200, intermediate: 260, advanced: 325, elite: 390 },
+    { bw: 190, beginner: 145, novice: 210, intermediate: 270, advanced: 335, elite: 405 },
+    { bw: 200, beginner: 150, novice: 220, intermediate: 280, advanced: 350, elite: 420 },
+    { bw: 210, beginner: 160, novice: 230, intermediate: 295, advanced: 365, elite: 435 },
+    { bw: 220, beginner: 165, novice: 240, intermediate: 305, advanced: 375, elite: 450 },
+    { bw: 230, beginner: 170, novice: 250, intermediate: 315, advanced: 390, elite: 465 },
+    { bw: 240, beginner: 175, novice: 255, intermediate: 325, advanced: 400, elite: 480 },
+    { bw: 250, beginner: 180, novice: 265, intermediate: 335, advanced: 415, elite: 495 },
+    { bw: 260, beginner: 185, novice: 270, intermediate: 345, advanced: 425, elite: 510 },
+    { bw: 270, beginner: 190, novice: 280, intermediate: 355, advanced: 435, elite: 520 },
+    { bw: 280, beginner: 195, novice: 285, intermediate: 360, advanced: 445, elite: 530 },
+    { bw: 290, beginner: 200, novice: 290, intermediate: 370, advanced: 455, elite: 540 },
+    { bw: 300, beginner: 205, novice: 300, intermediate: 380, advanced: 465, elite: 550 }
+  ],
+  DEADLIFT_STANDARDS: [
+    { bw: 180, beginner: 165, novice: 235, intermediate: 300, advanced: 375, elite: 445 },
+    { bw: 190, beginner: 170, novice: 245, intermediate: 315, advanced: 390, elite: 465 },
+    { bw: 200, beginner: 180, novice: 255, intermediate: 330, advanced: 405, elite: 485 },
+    { bw: 210, beginner: 185, novice: 265, intermediate: 345, advanced: 420, elite: 500 },
+    { bw: 220, beginner: 195, novice: 275, intermediate: 355, advanced: 435, elite: 520 },
+    { bw: 230, beginner: 200, novice: 285, intermediate: 370, advanced: 450, elite: 535 },
+    { bw: 240, beginner: 210, novice: 295, intermediate: 380, advanced: 465, elite: 550 },
+    { bw: 250, beginner: 215, novice: 305, intermediate: 395, advanced: 480, elite: 570 },
+    { bw: 260, beginner: 220, novice: 315, intermediate: 405, advanced: 495, elite: 585 },
+    { bw: 270, beginner: 225, novice: 320, intermediate: 415, advanced: 505, elite: 600 },
+    { bw: 280, beginner: 230, novice: 330, intermediate: 425, advanced: 520, elite: 615 },
+    { bw: 290, beginner: 235, novice: 335, intermediate: 435, advanced: 530, elite: 625 },
+    { bw: 300, beginner: 240, novice: 345, intermediate: 445, advanced: 540, elite: 640 }
+  ],
+  OVERHEAD_PRESS_STANDARDS: [
+    { bw: 180, beginner: 70, novice: 100, intermediate: 130, advanced: 165, elite: 200 },
+    { bw: 190, beginner: 72, novice: 104, intermediate: 135, advanced: 170, elite: 205 },
+    { bw: 200, beginner: 75, novice: 108, intermediate: 140, advanced: 175, elite: 210 },
+    { bw: 210, beginner: 78, novice: 112, intermediate: 145, advanced: 180, elite: 220 },
+    { bw: 220, beginner: 80, novice: 116, intermediate: 150, advanced: 190, elite: 225 },
+    { bw: 230, beginner: 82, novice: 120, intermediate: 155, advanced: 195, elite: 230 },
+    { bw: 240, beginner: 85, novice: 124, intermediate: 160, advanced: 200, elite: 235 },
+    { bw: 250, beginner: 88, novice: 128, intermediate: 165, advanced: 205, elite: 240 },
+    { bw: 260, beginner: 90, novice: 132, intermediate: 170, advanced: 210, elite: 245 },
+    { bw: 270, beginner: 92, novice: 136, intermediate: 175, advanced: 215, elite: 250 },
+    { bw: 280, beginner: 94, novice: 140, intermediate: 180, advanced: 220, elite: 255 },
+    { bw: 290, beginner: 96, novice: 144, intermediate: 185, advanced: 225, elite: 260 },
+    { bw: 300, beginner: 98, novice: 148, intermediate: 190, advanced: 230, elite: 265 }
+  ]
+};
 
 function debugLog(...args) {
   if (!DEBUG) return;
@@ -84,16 +157,16 @@ function computeWeightChange(metrics) {
 }
 
 function getTopSetFromLS(key) {
-  // stored as JSON: { w: number, r: number }
+  // Backward-compatible: old {w,r}, new {bestWeightLb,bestReps}
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const obj = JSON.parse(raw);
-    const w = Number(obj?.w);
-    const r = Number(obj?.r);
+    const w = Number(obj?.bestWeightLb ?? obj?.w);
+    const r = Number(obj?.bestReps ?? obj?.r);
     if (!Number.isFinite(w) || w <= 0) return null;
     if (!Number.isFinite(r) || r <= 0) return null;
-    return { w, r };
+    return { bestWeightLb: w, bestReps: r };
   } catch {
     return null;
   }
@@ -101,7 +174,7 @@ function getTopSetFromLS(key) {
 
 function setTopSetViaPrompt(key, label) {
   const cur = getTopSetFromLS(key);
-  const curText = cur ? `${cur.w} x ${cur.r}` : "";
+  const curText = cur ? `${cur.bestWeightLb} x ${cur.bestReps}` : "";
   const val = prompt(`${label} top set (format: weight x reps)\nExample: 225 x 5`, curText);
   if (!val) return;
 
@@ -119,35 +192,93 @@ function setTopSetViaPrompt(key, label) {
     return;
   }
 
-  localStorage.setItem(key, JSON.stringify({ w, r }));
+  localStorage.setItem(key, JSON.stringify({ bestWeightLb: w, bestReps: r, w, r }));
+}
+
+function estimate1RM(weight, reps) {
+  const w = Number(weight);
+  const r = Number(reps);
+  if (!Number.isFinite(w) || w <= 0) return null;
+  if (!Number.isFinite(r) || r <= 0) return null;
+  return Math.round(w * (1 + r / 30));
+}
+
+function nearestStandardsRow(rows, bw) {
+  const target = Number(bw);
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  if (!Number.isFinite(target) || target <= 0) return rows[0];
+  let best = rows[0];
+  let bestDiff = Math.abs(rows[0].bw - target);
+  for (let i = 1; i < rows.length; i++) {
+    const diff = Math.abs(rows[i].bw - target);
+    if (diff < bestDiff) {
+      best = rows[i];
+      bestDiff = diff;
+    }
+  }
+  return best;
+}
+
+function classifyStrengthLevel(oneRM, row) {
+  if (!Number.isFinite(oneRM) || !row) return null;
+  if (oneRM < row.novice) return "Beginner";
+  if (oneRM < row.intermediate) return "Novice";
+  if (oneRM < row.advanced) return "Intermediate";
+  if (oneRM < row.elite) return "Advanced";
+  return "Elite";
+}
+
+function percentileForLevel(level) {
+  return STRENGTH_LEVEL_PERCENTILES[level] || "—";
+}
+
+function renderStrengthCard(node, { title, topSet, standards, bodyweightLb }) {
+  if (!node) return;
+
+  if (!topSet) {
+    node.innerHTML = `
+      <div class="statStrengthTitle">${title}</div>
+      <div class="statStrengthMain">1RM: —</div>
+      <div class="statStrengthSub">Tap to set best set</div>
+    `;
+    return;
+  }
+
+  const oneRM = estimate1RM(topSet.bestWeightLb, topSet.bestReps);
+  const row = nearestStandardsRow(standards, bodyweightLb);
+  const level = classifyStrengthLevel(oneRM, row);
+  const percentile = percentileForLevel(level);
+
+  node.innerHTML = `
+    <div class="statStrengthTitle">${title}</div>
+    <div class="statStrengthMain">1RM: ${Number.isFinite(oneRM) ? `${oneRM} lb` : "—"}</div>
+    <div class="statStrengthSub">Level: ${level || "—"} · ${percentile}</div>
+  `;
 }
 
 async function renderStats(db, todayISO) {
+  const profileNode = elOpt("statProfileName");
+  if (profileNode) profileNode.textContent = PROFILE_NAME;
+
   // Age
   const age = calcAgeFromDOB(DOB_ISO, todayISO);
   const ageNode = elOpt("statAge");
   if (ageNode) ageNode.textContent = `${age}`;
 
-  // Metrics windows
-  const d7 = new Date(todayISO + "T00:00:00");
-  d7.setDate(d7.getDate() - 6);
-  const start7 = isoDateLocal(d7);
-
-  const d14 = new Date(todayISO + "T00:00:00");
-  d14.setDate(d14.getDate() - 13);
-  const start14 = isoDateLocal(d14);
-
+  // Metrics (today + fallback)
   const d365 = new Date(todayISO + "T00:00:00");
   d365.setDate(d365.getDate() - 365);
   const start365 = isoDateLocal(d365);
-
-  const metrics7 = await listMetricsInRange(db, start7, todayISO);
-  const metrics14 = await listMetricsInRange(db, start14, todayISO);
+  const metricToday = await getMetricByDate(db, todayISO);
   const metrics365 = await listMetricsInRange(db, start365, todayISO);
-
   const latest = findLatestMetric(metrics365);
 
-  const bw = latest?.bodyweightLb;
+  const bwToday = Number(metricToday?.bodyweightLb);
+  const bwLatest = Number(latest?.bodyweightLb);
+  const bw = Number.isFinite(bwToday) && bwToday > 0 ? bwToday : bwLatest;
+  const strengthLookupBW = Number.isFinite(bwToday) && bwToday > 0
+    ? bwToday
+    : (Number.isFinite(bwLatest) && bwLatest > 0 ? bwLatest : DEFAULT_STRENGTH_BW_LB);
   const bmi = Number.isFinite(bw) ? calcBMI(bw, HEIGHT_IN) : null;
 
   const bwNode = elOpt("statBW");
@@ -180,43 +311,46 @@ async function renderStats(db, todayISO) {
   const w30Node = elOpt("stat30dWorkouts");
   if (w30Node) w30Node.textContent = `Workouts (30d): ${w30}`;
 
-  // Calories averages
-  const cal7avg = avg(metrics7.map((m) => Number(m?.calories)));
-  const cal14avg = avg(metrics14.map((m) => Number(m?.calories)));
-
-  const cal7Node = elOpt("statCal7");
-  if (cal7Node) cal7Node.textContent = `Avg calories (7d): ${cal7avg ? fmtInt(cal7avg) : "—"}`;
-
-  const cal14Node = elOpt("statCal14");
-  if (cal14Node) cal14Node.textContent = `Avg calories (14d): ${cal14avg ? fmtInt(cal14avg) : "—"}`;
-
-  // Weight change 14d
-  const delta = computeWeightChange(metrics14);
-  const deltaNode = elOpt("statWChange14");
-  if (deltaNode) {
-    if (delta === null) deltaNode.textContent = "Weight change (14d): —";
-    else {
-      const sign = delta > 0 ? "+" : "";
-      deltaNode.textContent = `Weight change (14d): ${sign}${fmt1Safe(delta)} lb`;
-    }
-  }
-
-  // Strength (manual top sets stored locally)
+  // Strength percentile (manual top sets stored locally)
   const bench = getTopSetFromLS("fitplan_top_bench");
   const squat = getTopSetFromLS("fitplan_top_squat");
   const dead = getTopSetFromLS("fitplan_top_dead");
+  const ohp = getTopSetFromLS("fitplan_top_ohp");
 
-  const benchNode = elOpt("statBench");
-  const squatNode = elOpt("statSquat");
-  const deadNode = elOpt("statDeadlift");
+  const benchNode = elOpt("statStrengthBench");
+  const squatNode = elOpt("statStrengthSquat");
+  const deadNode = elOpt("statStrengthDeadlift");
+  const ohpNode = elOpt("statStrengthOHP");
 
-  if (benchNode) benchNode.textContent = `Bench: ${bench ? `${bench.w} x ${bench.r}` : "Tap to set"}`;
-  if (squatNode) squatNode.textContent = `Squat: ${squat ? `${squat.w} x ${squat.r}` : "Tap to set"}`;
-  if (deadNode) deadNode.textContent = `Deadlift: ${dead ? `${dead.w} x ${dead.r}` : "Tap to set"}`;
+  renderStrengthCard(benchNode, {
+    title: "Bench Press",
+    topSet: bench,
+    standards: STRENGTH_STANDARDS.BENCH_PRESS_STANDARDS,
+    bodyweightLb: strengthLookupBW
+  });
+  renderStrengthCard(squatNode, {
+    title: "Squat",
+    topSet: squat,
+    standards: STRENGTH_STANDARDS.SQUAT_STANDARDS,
+    bodyweightLb: strengthLookupBW
+  });
+  renderStrengthCard(deadNode, {
+    title: "Deadlift",
+    topSet: dead,
+    standards: STRENGTH_STANDARDS.DEADLIFT_STANDARDS,
+    bodyweightLb: strengthLookupBW
+  });
+  renderStrengthCard(ohpNode, {
+    title: "Overhead Press",
+    topSet: ohp,
+    standards: STRENGTH_STANDARDS.OVERHEAD_PRESS_STANDARDS,
+    bodyweightLb: strengthLookupBW
+  });
 
   if (benchNode) benchNode.onclick = () => { setTopSetViaPrompt("fitplan_top_bench", "Bench"); renderStats(db, todayISO).catch(()=>{}); };
   if (squatNode) squatNode.onclick = () => { setTopSetViaPrompt("fitplan_top_squat", "Squat"); renderStats(db, todayISO).catch(()=>{}); };
   if (deadNode) deadNode.onclick = () => { setTopSetViaPrompt("fitplan_top_dead", "Deadlift"); renderStats(db, todayISO).catch(()=>{}); };
+  if (ohpNode) ohpNode.onclick = () => { setTopSetViaPrompt("fitplan_top_ohp", "Overhead Press"); renderStats(db, todayISO).catch(()=>{}); };
 }
 
 function uid(prefix = "id") {
@@ -635,6 +769,26 @@ function findFirstMissingWizardStep(wizard, dayPlan) {
   return null;
 }
 
+function getRestSecondsForExercise(exercise) {
+  const explicit = Number(exercise?.restSec);
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+
+  const name = String(exercise?.name || "").toLowerCase();
+  const isolationKeywords = [
+    "curl",
+    "pushdown",
+    "extension",
+    "fly",
+    "crossover",
+    "lateral raise",
+    "rear delt",
+    "shrug",
+    "calf"
+  ];
+  const isIsolation = isolationKeywords.some((k) => name.includes(k));
+  return isIsolation ? 90 : 150;
+}
+
 async function persistWizardDraftSetLogs(db, session, wizard, dayPlan) {
   const reps = getTargetReps(session.dayNumber);
   for (const ex of dayPlan.exercises) {
@@ -946,6 +1100,122 @@ function renderCharts({ labels, weights, calories }) {
 
   el("weightRangeLabel").textContent = `${wMin}–${wMax} lb (last ${labels.length} days)`;
   el("calRangeLabel").textContent = `${cMin}–${cMax} kcal (last ${labels.length} days)`;
+}
+
+async function renderWeightChart(db) {
+  if (!window.Chart) return;
+  const canvas = elOpt("weightChart");
+  if (!canvas) return;
+
+  const metrics = await listAllMetrics(db);
+  metrics.sort((a, b) => String(a?.date || "").localeCompare(String(b?.date || "")));
+
+  const labels = metrics.map((m) => m.date);
+  const data = metrics.map((m) => (Number.isFinite(Number(m?.bodyweightLb)) ? Number(m.bodyweightLb) : null));
+
+  const ctx = canvas.getContext("2d");
+  if (weightChartInstance) weightChartInstance.destroy();
+  weightChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{ label: "Bodyweight (lb)", data, tension: 0.3 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { ticks: { precision: 0 } } }
+    }
+  });
+}
+
+function getMonthDays(year, month) {
+  const last = new Date(year, month + 1, 0);
+  const days = [];
+  for (let d = 1; d <= last.getDate(); d++) {
+    days.push(new Date(year, month, d));
+  }
+  return days;
+}
+
+async function getSessionsByDateMap(db) {
+  const sessions = await listAllSessions(db);
+  const map = new Map();
+  sessions.forEach((s) => map.set(s.date, s));
+  return map;
+}
+
+async function openDayDetails(db, dateISO, session) {
+  const card = elOpt("dayDetailsCard");
+  const title = elOpt("dayDetailsTitle");
+  const content = elOpt("dayDetailsContent");
+  if (!card || !title || !content) return;
+
+  card.classList.remove("hidden");
+  title.textContent = dateISO;
+
+  if (!session) {
+    content.innerHTML = "<p>No workout logged.</p>";
+    return;
+  }
+
+  if (session.type === "REST") {
+    content.innerHTML = "<p>Rest day</p>";
+    return;
+  }
+
+  const allLogs = await listAllSetLogs(db);
+  const logs = allLogs
+    .filter((log) => log?.sessionId === session.id)
+    .sort((a, b) => {
+      const ex = String(a.exerciseName || "").localeCompare(String(b.exerciseName || ""));
+      if (ex !== 0) return ex;
+      return Number(a.setNumber || 0) - Number(b.setNumber || 0);
+    });
+
+  let html = `<h3>Day ${session.dayNumber} Workout</h3>`;
+  logs.forEach((log) => {
+    html += `<p>${log.exerciseName} — Set ${log.setNumber}: ${log.weight} lb</p>`;
+  });
+  content.innerHTML = html;
+}
+
+async function renderCalendar(db) {
+  const container = elOpt("calendarContainer");
+  if (!container) return;
+  container.innerHTML = "";
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const todayISO = isoDateLocal(new Date());
+
+  const days = getMonthDays(year, month);
+  const sessionsMap = await getSessionsByDateMap(db);
+
+  const grid = document.createElement("div");
+  grid.className = "calendarGrid";
+
+  days.forEach((date) => {
+    const iso = isoDateLocal(date);
+    const session = sessionsMap.get(iso);
+
+    const cell = document.createElement("div");
+    cell.className = "calendarDay calendarEmpty";
+    cell.textContent = String(date.getDate());
+
+    if (session?.type === "WORKOUT") cell.classList.add("calendarWorkout");
+    if (session?.type === "REST") cell.classList.add("calendarRest");
+    if (iso === todayISO) cell.classList.add("calendarToday");
+
+    cell.onclick = () => {
+      openDayDetails(db, iso, session).catch(() => {});
+    };
+    grid.appendChild(cell);
+  });
+
+  container.appendChild(grid);
 }
 
 function enableQuickTrackUI(enabled) {
@@ -1275,40 +1545,10 @@ async function main() {
 
   el("navHistory").onclick = async () => {
     goScreen("screenHistory");
-    renderRecent(db).catch(() => { });
-
-    const startD = new Date(todayISO + "T00:00:00");
-    startD.setDate(startD.getDate() - 13);
-    const startISO = isoDateLocal(startD);
-
-    const metrics = await listMetricsInRange(db, startISO, todayISO);
-
-    if (metrics.length === 0) {
-      renderCharts(buildPlaceholderSeries(todayISO, 14));
-    } else {
-      const byDate = new Map(metrics.map((m) => [m.date, m]));
-
-      const labels = [];
-      const weights = [];
-      const calories = [];
-
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date(todayISO + "T00:00:00");
-        d.setDate(d.getDate() - i);
-        const iso = isoDateLocal(d);
-
-        labels.push(iso.slice(5));
-        const m = byDate.get(iso);
-
-        weights.push(m?.bodyweightLb ?? null);
-        calories.push(m?.calories ?? null);
-      }
-
-      renderCharts({ labels, weights, calories });
-    }
-
-    enableQuickTrackUI(true);
-    wireBMI();
+    const detailsCard = elOpt("dayDetailsCard");
+    if (detailsCard) detailsCard.classList.add("hidden");
+    await renderWeightChart(db);
+    await renderCalendar(db);
   };
 
   el("btnLogBackHome").onclick = () => {
@@ -1321,32 +1561,6 @@ async function main() {
     show("logCard");
     goScreen("screenHome");
   };
-
-  el("btnHistoryRefresh").onclick = () => el("navHistory").click();
-
-  // quick track toggle (History)
-  const btnToggle = elOpt("btnToggleQuickTrack");
-  const quickBody = elOpt("quickTrackBody");
-  if (btnToggle && quickBody) {
-    btnToggle.onclick = () => {
-      const open = quickBody.style.display !== "none";
-      quickBody.style.display = open ? "none" : "";
-      btnToggle.textContent = open ? "Expand" : "Collapse";
-    };
-  }
-
-
-
-  // History: placeholder button
-  const btnUsePlaceholder = elOpt("btnUsePlaceholder");
-  if (btnUsePlaceholder) {
-    btnUsePlaceholder.onclick = () => {
-      const series = buildPlaceholderSeries(todayISO, 14);
-      renderCharts(series);
-      enableQuickTrackUI(true);
-      wireBMI();
-    };
-  }
 
   const btnDownloadBackup = elOpt("btnDownloadBackup");
   if (btnDownloadBackup) {
@@ -1897,9 +2111,8 @@ async function main() {
           return;
         }
 
-        const dayType = getDayType(wizard.dayNumber);
-        const suggested = dayType === "HEAVY" ? 150 : 90;
-        openRestOverlay(suggested, `Rest ${suggested}s`, () => {
+        const suggested = getRestSecondsForExercise(ex);
+        openRestOverlay(suggested, `Rest — ${ex.name}`, () => {
           advanceWizardAfterRest().catch((err) => {
             console.error(err);
             alert("Failed to advance wizard.");
